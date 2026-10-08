@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 108dp 画布，安全区为中间 66dp（约 21.7 ~ 86.3）；图形只落在安全区内，避免各厂商裁切。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- 日历外框 -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M28,34 h52 a5,5 0 0 1 5,5 v39 a5,5 0 0 1 -5,5 h-52 a5,5 0 0 1 -5,-5 v-39 a5,5 0 0 1 5,-5 z" />
+    <!-- 表头 -->
+    <path
+        android:fillColor="#FF1F5FA9"
+        android:pathData="M23,34 h62 v13 h-62 z" />
+    <!-- 左右装订环 -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M35,27 h6 v14 h-6 z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M67,27 h6 v14 h-6 z" />
+    <!-- 网格：两行三列 -->
+    <path
+        android:fillColor="#FF1F5FA9"
+        android:pathData="M33,54 h11 v10 h-11 z" />
+    <path
+        android:fillColor="#FF1F5FA9"
+        android:pathData="M48.5,54 h11 v10 h-11 z" />
+    <path
+        android:fillColor="#FF1F5FA9"
+        android:pathData="M64,54 h11 v10 h-11 z" />
+    <path
+        android:fillColor="#FF1F5FA9"
+        android:pathData="M33,69 h11 v10 h-11 z" />
+    <path
+        android:fillColor="#FF1F5FA9"
+        android:pathData="M48.5,69 h11 v10 h-11 z" />
+    <path
+        android:fillColor="#FF1F5FA9"
+        android:pathData="M64,69 h11 v10 h-11 z" />
+</vector>

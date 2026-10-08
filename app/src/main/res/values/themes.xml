@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      用系统 Material 主题作基类，避免为一个启动主题引入 AppCompat / MaterialComponents 依赖。
+      Compose 只接管 android:windowBackground 与状态栏，不读取这个主题的组件样式。
+    -->
+    <style name="Theme.NtuSchedule" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/window_background</item>
+        <item name="android:statusBarColor">@color/window_background</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+</resources>

@@ -1,0 +1,24 @@
+// 仓库顺序：官方仓库优先，中间夹阿里云镜像。
+// 阿里云那几行是为了**中国大陆的网络**（官方仓库常常连不上或极慢）；
+// 如果你不在中国大陆，可以把 `maven.aliyun.com` 那几行删掉，只留官方的，解析会更快。
+pluginManagement {
+    repositories {
+        google()
+        maven { url 'https://maven.aliyun.com/repository/gradle-plugin' }
+        maven { url 'https://maven.aliyun.com/repository/public' }
+        maven { url 'https://maven.aliyun.com/repository/google' }
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+dependencyResolutionManagement {
+    repositories {
+        google()
+        maven { url 'https://maven.aliyun.com/repository/google' }
+        maven { url 'https://maven.aliyun.com/repository/public' }
+        maven { url 'https://maven.aliyun.com/repository/central' }
+        mavenCentral()
+    }
+}
+rootProject.name = "ntu-schedule"
+include ":app"

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  FileProvider 能暴露出去的路径白名单。
+
+  只开 crash 这一个子目录，**别的什么都不开**：
+  /files 根目录下有 schedule.json、session.json、credentials.json，
+  哪怕 credentials.json 里的密码是加密的，也没有任何理由让别的 App 有机会去读它。
+  分享崩溃报告只需要一份 txt，就只暴露放 txt 的那一个目录。
+-->
+<paths>
+    <files-path name="crash_reports" path="crash/" />
+</paths>

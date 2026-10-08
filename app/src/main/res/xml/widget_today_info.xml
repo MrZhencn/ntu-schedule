@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  小组件元信息。
+
+  - updatePeriodMillis 设为 0：系统最小只支持 30 分钟且极不准时，改由 AlarmManager
+    在每天零点后精确刷新（见 WidgetUpdateScheduler）。设 0 表示「不靠系统定时」。
+  - resizeMode：小组件允许横向纵向拉高，行数固定 6，拉高后能显示更多行。
+
+  尺寸为什么这么写（这里踩过坑，别随手改）：
+  - Android 12+ 认 targetCellWidth/targetCellHeight，直接按「占几格」摆，4×3。
+  - Android 11 及以下**完全不认**上面两个属性，只按 minWidth/minHeight 的 dp 换算格数。
+    手机桌面普遍是 5 列的网格，官方换算式是「格数 × 73 - 16」和「格数 × 66 - 15」，
+    所以 minWidth=180dp → (180+16)/73 ≈ 2.7 → 要 3 列；minHeight=110dp → (110+15)/66 ≈ 1.9 → 要 2 行。
+    minHeight 从 130dp 降到 110dp 就是为了这一档：旧 ROM 上「要 3 行」经常因为
+    用户当前这页只剩两行半而放不下，表现就是「小组件列表里能看到、但一拖就弹回去」。
+    拉高之后仍然能显示全部 6 行，只是初始高度矮一点。
+
+  预览图为什么有两个：
+  - previewLayout（Android 12+ 优先用）用真实布局渲染，主题、字号永远跟得上改版；
+  - previewImage（全版本都认，老桌面只用这个）是一张提前画好的 PNG。
+    两个都给，是为了在 API 24-30 的国产桌面上也能有一张像样的缩略图 ——
+    没有预览时系统是拿 initialLayout 临时充数的，部分 ROM 的组件库里会显示成空白格子。
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:initialLayout="@layout/widget_today"
+    android:previewLayout="@layout/widget_preview"
+    android:previewImage="@drawable/widget_preview"
+    android:minWidth="180dp"
+    android:minHeight="110dp"
+    android:minResizeWidth="160dp"
+    android:minResizeHeight="80dp"
+    android:resizeMode="vertical|horizontal"
+    android:targetCellWidth="4"
+    android:targetCellHeight="3"
+    android:updatePeriodMillis="0"
+    android:widgetCategory="home_screen"
+    android:description="@string/widget_description" />

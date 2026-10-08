@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      小组件行样式。抽成 style 是因为 widget_today.xml 里要重复 6 遍，
+      否则任何一处漏改（比如字色）都会让某一行看起来坏掉。
+    -->
+    <style name="WidgetRow">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:orientation">horizontal</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:paddingTop">3dp</item>
+        <item name="android:paddingBottom">3dp</item>
+    </style>
+
+    <!--
+      时间列刻意做成**上下两行**（开始时间在上、结束时间在下），而不是「07:50-09:20」一行：
+      完整区间是 11 个字符，在 11sp 下约需 66dp，而时间列只能给到 55dp 左右（再宽就把课名
+      挤没了），结果就是时间被 ellipsize 成「07:50-0…」。拆成两行后每行只有 5 个字符
+      （约 30dp），任何宽度下都不可能被截断。
+      代价是这一列变窄（54dp < 原来的 62dp），课名反而多出 8dp。
+    -->
+    <style name="WidgetTime">
+        <item name="android:layout_width">54dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textColor">@color/widget_accent</item>
+        <item name="android:textSize">11sp</item>
+        <item name="android:maxLines">2</item>
+        <item name="android:ellipsize">end</item>
+    </style>
+
+    <style name="WidgetBody">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:orientation">vertical</item>
+    </style>
+
+    <style name="WidgetName">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textColor">@color/widget_name</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:ellipsize">end</item>
+    </style>
+
+    <style name="WidgetRoom">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textColor">@color/widget_sub</item>
+        <item name="android:textSize">10sp</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:ellipsize">end</item>
+    </style>
+</resources>

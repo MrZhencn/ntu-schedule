@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      小组件配色。用深色半透明卡片：桌面壁纸深浅不定，浅底白字/深底黑字都会在某些壁纸上糊掉，
+      而深色卡 + 白字的对比度对绝大多数壁纸都成立。
+    -->
+    <color name="widget_background">#E6202A38</color>
+    <color name="widget_title">#FFFFFFFF</color>
+    <color name="widget_name">#FFF2F5F9</color>
+    <color name="widget_sub">#FFA9B6C6</color>
+    <color name="widget_accent">#FF7FB0E8</color>
+    <color name="widget_divider">#33FFFFFF</color>
+
+    <!-- 应用内课表格子颜色 -->
+    <color name="course_text_on_color">#FF0A2440</color>
+    <color name="grid_line">#FFE2E6EC</color>
+    <color name="today_row_highlight">#FFEDF3FB</color>
+</resources>

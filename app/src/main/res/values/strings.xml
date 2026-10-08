@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">南通大学课表</string>
+    <string name="widget_label">今日课表</string>
+    <string name="widget_description">在桌面显示今天的课程时间与地点</string>
+    <string name="widget_more_courses">还有 %1$d 门课</string>
+    <string name="widget_more_hint">把小组件拉高就能看全</string>
+
+    <!-- 底部标签 -->
+    <string name="tab_today">今天</string>
+    <string name="tab_week">周课表</string>
+
+    <!-- 导入 -->
+    <string name="import_title">导入课表</string>
+    <string name="import_student_id">学号</string>
+    <string name="import_password">密码</string>
+    <string name="import_action">登录并导入</string>
+    <string name="import_cancel">取消</string>
+    <string name="import_note">密码只用于本次登录，不会保存在手机上。连续输错 5 次会锁定学校账号，请确认无误后再点导入。</string>
+    <string name="refresh_action">刷新</string>
+    <string name="refresh_failed">刷新失败</string>
+
+    <!-- 空状态与提示 -->
+    <string name="empty_no_schedule">还没有课表</string>
+    <string name="empty_no_schedule_hint">点右上角「导入」，用学号和密码从教务系统拉取本学期课表。</string>
+    <string name="empty_today">今天没有课 🎉</string>
+    <string name="empty_week">这一周没有课</string>
+    <string name="loading">正在导入…</string>
+    <string name="importing_hint">正在登录教务系统并读取课表，通常需要 10-30 秒…</string>
+
+    <!-- 菜单 -->
+    <string name="menu_import">导入 / 重新导入</string>
+    <string name="menu_refresh">用已保存的登录刷新</string>
+    <string name="menu_add_widget">添加桌面小组件</string>
+    <string name="menu_clear">清除本地数据</string>
+    <string name="menu_about">关于</string>
+
+    <!-- 关于 -->
+    <string name="about_title">关于</string>
+    <string name="about_body">南通大学课表 · 非官方客户端\n\n课表数据来自教务系统，仅供个人查看。\n作息时间按学校官网《教学作息时间表》：5-9 月执行夏令时间，10 月-次年 4 月执行冬令时间。\n\n本 App 不保存密码，只保存课表与登录票据；登录票据失效后可重新导入。</string>
+</resources>

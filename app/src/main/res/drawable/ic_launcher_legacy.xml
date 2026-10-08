@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  API < 26 的图标回退（adaptive-icon 只在 26+ 生效）。
+  圆角以 path 描述，避免在 vector 里用 corners 属性带来的兼容顾虑。
+  iced 圆角半径 8，圆角处用 0.5523*r ≈ 4.42 控制点近似。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+
+    <!-- 底板（圆角矩形），蓝色品牌色 -->
+    <path
+        android:fillColor="#FF1F5FA9"
+        android:pathData="M8,0 L40,0 C44.42,0 48,3.58 48,8 L48,40 C48,44.42 44.42,48 40,48 L8,48 C3.58,48 0,44.42 0,40 L0,8 C0,3.58 3.58,0 8,0 Z" />
+
+    <!-- 日历白纸：x 9..39, y 12..39 -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M9,12 L39,12 L39,39 L9,39 Z" />
+    <!-- 表头（品牌蓝） -->
+    <path
+        android:fillColor="#FF1F5FA9"
+        android:pathData="M9,12 L39,12 L39,18 L9,18 Z" />
+    <!-- 装订环 -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M15,8 L18,8 L18,15 L15,15 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M30,8 L33,8 L33,15 L30,15 Z" />
+    <!-- 网格 -->
+    <path
+        android:fillColor="#FF1F5FA9"
+        android:pathData="M13,22 L19,22 L19,27 L13,27 Z" />
+    <path
+        android:fillColor="#FF1F5FA9"
+        android:pathData="M21,22 L27,22 L27,27 L21,27 Z" />
+    <path
+        android:fillColor="#FF1F5FA9"
+        android:pathData="M29,22 L35,22 L35,27 L29,27 Z" />
+    <path
+        android:fillColor="#FF1F5FA9"
+        android:pathData="M13,31 L19,31 L19,36 L13,36 Z" />
+    <path
+        android:fillColor="#FF1F5FA9"
+        android:pathData="M21,31 L27,31 L27,36 L21,36 Z" />
+    <path
+        android:fillColor="#FF1F5FA9"
+        android:pathData="M29,31 L35,31 L35,36 L29,36 Z" />
+</vector>

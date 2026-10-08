@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  小组件的「预览图」（Android 12+ 优先用 previewLayout，见 xml/widget_today_info.xml）。
+
+  这是**静态的示意**，内容写死，跟真实数据无关 —— 它只是组件库里给用户看的那张缩略图，
+  不参与 RemoteViews 更新流程。所以：
+  - 用真实的 @style/WidgetXxx 和 @color/widget_xxx，改版时缩略图会跟着变；
+  - 只放 4 行示例课，不放 6 行 —— 缩略图里塞满反而看不清；
+  - 文案要像真的（第几周、时间、教室都要有），因为用户是拿它判断「这是不是我想要的那个」。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@drawable/widget_background"
+    android:padding="10dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingBottom="6dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="今天"
+            android:textColor="@color/widget_title"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:maxLines="1"
+            android:ellipsize="end" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="end"
+            android:text="第 8 周"
+            android:textColor="@color/widget_accent"
+            android:textSize="11sp"
+            android:maxLines="1" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="6dp"
+            android:text="10月8日"
+            android:textColor="@color/widget_sub"
+            android:textSize="11sp"
+            android:maxLines="1" />
+    </LinearLayout>
+
+    <LinearLayout style="@style/WidgetRow">
+        <TextView style="@style/WidgetTime" android:text="07:50&#10;09:20" />
+        <LinearLayout style="@style/WidgetBody">
+            <TextView style="@style/WidgetName" android:text="高等数学 A" />
+            <TextView style="@style/WidgetRoom" android:text="教7-301 · 王老师" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout style="@style/WidgetRow">
+        <TextView style="@style/WidgetTime" android:text="09:35&#10;11:10" />
+        <LinearLayout style="@style/WidgetBody">
+            <TextView style="@style/WidgetName" android:text="大学英语（三）" />
+            <TextView style="@style/WidgetRoom" android:text="教4-215 · 李老师" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout style="@style/WidgetRow">
+        <TextView style="@style/WidgetTime" android:text="13:30&#10;15:00" />
+        <LinearLayout style="@style/WidgetBody">
+            <TextView style="@style/WidgetName" android:text="数据结构" />
+            <TextView style="@style/WidgetRoom" android:text="计算机楼-402 · 张老师" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout style="@style/WidgetRow">
+        <TextView style="@style/WidgetTime" android:text="15:20&#10;16:50" />
+        <LinearLayout style="@style/WidgetBody">
+            <TextView style="@style/WidgetName" android:text="中国近现代史纲要" />
+            <TextView style="@style/WidgetRoom" android:text="教2-108 · 陈老师" />
+        </LinearLayout>
+    </LinearLayout>
+
+</LinearLayout>

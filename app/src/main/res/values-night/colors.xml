@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  深色主题下的启动窗口色。取值与 Theme.kt 里 DarkColors 的 surface (#FF1A1C1E) 对齐，
+  否则系统处于深色模式时冷启动会闪一下白屏。
+-->
+<resources>
+    <color name="window_background">#FF1A1C1E</color>
+</resources>

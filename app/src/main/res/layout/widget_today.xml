@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  桌面小组件：今日课表。
+
+  RemoteViews 限制：不能 include、不能用 ConstraintLayout 的全部能力，所以这里只用
+  LinearLayout 嵌套。行数是固定的（row_1..row_6），由 WidgetRenderer.MAX_ROWS 控制，
+  多余的会被设为 GONE。改行数必须同时改 WidgetRenderer 里的 ROW_IDS 等数组。
+
+  用 drawable/widget_background.xml 画圆角卡片：Android 12+ 系统会给小组件自动加圆角，
+  但国产 ROM（API 24-30 居多）不会，所以自己画。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@drawable/widget_background"
+    android:padding="10dp">
+
+    <!-- 头部：星期 + 日期 + 第几周 -->
+    <LinearLayout
+        android:id="@+id/widget_header"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingBottom="6dp">
+
+        <TextView
+            android:id="@+id/widget_day"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="今天"
+            android:textColor="@color/widget_title"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:maxLines="1"
+            android:ellipsize="end" />
+
+        <TextView
+            android:id="@+id/widget_week"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="end"
+            android:text=""
+            android:textColor="@color/widget_accent"
+            android:textSize="11sp"
+            android:maxLines="1" />
+
+        <TextView
+            android:id="@+id/widget_date"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="6dp"
+            android:text=""
+            android:textColor="@color/widget_sub"
+            android:textSize="11sp"
+            android:maxLines="1" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/widget_empty"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="今天没有课"
+        android:textColor="@color/widget_sub"
+        android:textSize="12sp"
+        android:paddingTop="6dp"
+        android:paddingBottom="6dp"
+        android:visibility="gone" />
+
+    <!-- 第 1 行 -->
+    <LinearLayout android:id="@+id/widget_row_1" style="@style/WidgetRow">
+        <TextView android:id="@+id/widget_time_1" style="@style/WidgetTime" />
+        <LinearLayout style="@style/WidgetBody">
+            <TextView android:id="@+id/widget_name_1" style="@style/WidgetName" />
+            <TextView android:id="@+id/widget_room_1" style="@style/WidgetRoom" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- 第 2 行 -->
+    <LinearLayout android:id="@+id/widget_row_2" style="@style/WidgetRow">
+        <TextView android:id="@+id/widget_time_2" style="@style/WidgetTime" />
+        <LinearLayout style="@style/WidgetBody">
+            <TextView android:id="@+id/widget_name_2" style="@style/WidgetName" />
+            <TextView android:id="@+id/widget_room_2" style="@style/WidgetRoom" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- 第 3 行 -->
+    <LinearLayout android:id="@+id/widget_row_3" style="@style/WidgetRow">
+        <TextView android:id="@+id/widget_time_3" style="@style/WidgetTime" />
+        <LinearLayout style="@style/WidgetBody">
+            <TextView android:id="@+id/widget_name_3" style="@style/WidgetName" />
+            <TextView android:id="@+id/widget_room_3" style="@style/WidgetRoom" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- 第 4 行 -->
+    <LinearLayout android:id="@+id/widget_row_4" style="@style/WidgetRow">
+        <TextView android:id="@+id/widget_time_4" style="@style/WidgetTime" />
+        <LinearLayout style="@style/WidgetBody">
+            <TextView android:id="@+id/widget_name_4" style="@style/WidgetName" />
+            <TextView android:id="@+id/widget_room_4" style="@style/WidgetRoom" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- 第 5 行 -->
+    <LinearLayout android:id="@+id/widget_row_5" style="@style/WidgetRow">
+        <TextView android:id="@+id/widget_time_5" style="@style/WidgetTime" />
+        <LinearLayout style="@style/WidgetBody">
+            <TextView android:id="@+id/widget_name_5" style="@style/WidgetName" />
+            <TextView android:id="@+id/widget_room_5" style="@style/WidgetRoom" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- 第 6 行 -->
+    <LinearLayout android:id="@+id/widget_row_6" style="@style/WidgetRow">
+        <TextView android:id="@+id/widget_time_6" style="@style/WidgetTime" />
+        <LinearLayout style="@style/WidgetBody">
+            <TextView android:id="@+id/widget_name_6" style="@style/WidgetName" />
+            <TextView android:id="@+id/widget_room_6" style="@style/WidgetRoom" />
+        </LinearLayout>
+    </LinearLayout>
+
+</LinearLayout>

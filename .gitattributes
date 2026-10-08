@@ -1,0 +1,16 @@
+# 统一换行符：仓库里一律存 LF，检出时也保持 LF。
+# 不加这一条的话，Windows 上 core.autocrlf=true 会把 gradlew（shell 脚本）
+# 检出成 CRLF，Linux / macOS 上执行会直接报 `bad interpreter: No such file or directory`。
+* text=auto eol=lf
+
+# Windows 批处理必须是 CRLF
+*.bat text eol=crlf
+
+# 二进制文件不要动
+*.jar binary
+*.png binary
+*.apk binary
+
+# 明确钉死脚本的换行符
+gradlew text eol=lf
+gradlew.bat text eol=crlf

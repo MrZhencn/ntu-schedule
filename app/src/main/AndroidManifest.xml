@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- 上课提醒。Android 13+ 需要在运行时申请，界面里在导入成功后引导一次 -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!--
+        精确闹钟：只有真正上课前一小时那一刻弹横幅才准。Android 12+ 上系统默认不给，
+        需要用户到「闹钟和提醒」里放行 —— 拿不到时 ReminderScheduler 会退回非精确闹钟，
+        提醒照发，只是可能晚几分钟，绝不会干脆不提醒。
+    -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <!--
+        电池优化白名单：国产 ROM 进入省电模式后会压制后台闹钟，提醒就变成「开 App 才补发」。
+        代码申请不到名单，只能拉起系统的白名单确认页引导用户自己放行。
+    -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <!-- allowBackup=false：本地存着学号与教务会话票据，不允许被云备份卷走 -->
+    <application
+        android:name=".NtuApp"
+        android:allowBackup="false"
+        android:icon="@drawable/ic_launcher_legacy"
+        android:label="@string/app_name"
+        android:roundIcon="@drawable/ic_launcher_legacy"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.NtuSchedule">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.NtuSchedule">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- 桌面小组件 -->
+        <receiver
+            android:name=".widget.ScheduleWidgetProvider"
+            android:exported="false"
+            android:label="@string/widget_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_today_info" />
+        </receiver>
+
+        <!-- 零点刷新 + 开机 / 改时间后重排闹钟（重启和改时间都会让已排的绝对时刻失准） -->
+        <receiver
+            android:name=".widget.WidgetRefreshReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.ntu.schedule.action.MIDNIGHT_REFRESH" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- 上课前 1 小时的提醒闹钟 + 每日滚动续排 -->
+        <receiver
+            android:name=".notify.ReminderReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.ntu.schedule.action.CLASS_REMIND" />
+                <action android:name="com.ntu.schedule.action.REMINDER_REARM" />
+            </intent-filter>
+        </receiver>
+
+        <!--
+            崩溃报告要能被「分享」出去，就必须给出一个别的 App 读得到的 content:// URI。
+            直接给 file:// 从 Android 7 起会抛 FileUriExposedException。
+            authority 用 ${applicationId} 占位符：debug 版本的包名带 .debug 后缀，
+            写死 com.ntu.schedule.fileprovider 会让 debug 包在运行时找不到 provider。
+            暴露范围只有 files/crash/ 一个目录，见 res/xml/file_paths.xml。
+        -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
+    </application>
+
+</manifest>
