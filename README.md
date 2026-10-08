@@ -34,5 +34,3 @@
 Mr_Zhen_cn(狐涂) 为原作者，保留对本 App 的一切权利。
 
 该程序免费，如果你是付费得到的，恭喜你被骗了。
-
-（同样的两句话也显示在 App 里：登录页最底下、以及菜单 →「关于」。文案只有一个来源 —— `app/src/main/java/com/ntu/schedule/ui/AuthorNotice.kt` 里的 `AUTHOR_NAME`，两处从它拼出来，改一处就够。）
