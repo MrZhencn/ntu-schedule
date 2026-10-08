@@ -44,7 +44,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -81,6 +84,35 @@ private val GRID_STROKE = 0.5.dp
 private val COURSE_CORNER = 8.dp
 private val COURSE_INSET_H = 1.5.dp
 private val COURSE_INSET_V = 1.dp
+
+/**
+ * 整张网格本身就是一张卡片：四周留边、圆角、一条 0.5dp 的外框。
+ *
+ * 留边是为了让网格从「铺满整屏的白」变成「浮在页面上的一张表」。不设自定义背景时
+ * 页面和卡片都是白的，全靠这条外框把两者的边界交代清楚；设了图片/渐变背景之后，
+ * 这 8dp 的缝里透出来的就是用户自己的背景，卡片感更明显。
+ *
+ * 圆角取 14dp，和今日课表、设置页的卡片是同一个数（[com.ntu.schedule.ui.TodayScreen]）。
+ */
+private val GRID_MARGIN = 8.dp
+private val GRID_CORNER = 14.dp
+
+/**
+ * 表头行与左侧时间轴的底色浓度（在 `surfaceVariant` 上再冲淡）。
+ *
+ * 这两块是「标签区」：日期行说明每一列是谁、节次栏说明每一行是第几节。
+ * 7 天和 12 节**一视同仁**，没有「今天」也没有「当前节次」—— 和课程色块一样，
+ * 这张表里除课程之外不突出任何一个格子。
+ */
+private const val GUTTER_ALPHA = 0.7f
+
+/**
+ * 格内细线（节次分隔、星期分隔）相对外框的浓淡。
+ *
+ * 外框和「表头—课程区」「时间轴—课程区」两条分界用全浓度的 `outlineVariant`，
+ * 格内用半浓度：一眼能看出表格的骨架在哪，又不至于让 19 条线糊成一片。
+ */
+private const val GRID_LINE_ALPHA = 0.6f
 
 /**
  * 周课表：**左右翻页**，一页一周，从第 1 周划到第 19 周；每周内部纵向滚动。
@@ -329,6 +361,8 @@ private fun WeekJumpDialog(
  *    网格是规则的，横线就在 `表头高 + n × 单位高` 处，竖线按 7 等分算就行。
  *    这些线画在父节点上，**在课程色块下面**；色块四周留了白（见 [COURSE_CORNER]），
  *    线就从缝里透出来 —— 圆角卡片浮在网格上，靠的正是这个层次关系。
+ *    表头/时间轴的底色、卡片的外框也都在这一条里画完，所以后面加的这些
+ *    **没有多出任何绘制节点**，拖动时每帧要跑的仍然只有这一个 `drawBehind`。
  * 2. **连续的空节次合并成一段**（见 [mergeEmptyRuns]）：7 天里通常只有两三段有课，
  *    一页的格子节点从 84 个降到 20 多个。
  * 3. 底色只铺一次（整页一个），不再每个格子叠一层。
@@ -361,6 +395,9 @@ private fun WeekPage(
     }
     val hasAnyCourse = weekCourses.isNotEmpty()
     val gridColor = MaterialTheme.colorScheme.outlineVariant
+    // 格内线：同一个颜色冲淡，不另引入一种灰。
+    val gridLineColor = gridColor.copy(alpha = GRID_LINE_ALPHA)
+    val gutterColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = GUTTER_ALPHA)
     val cellBackground = panelColor()
     val rowCount = lastPeriod - firstPeriod + 1
 
@@ -370,61 +407,88 @@ private fun WeekPage(
             .background(cellBackground)
             .verticalScroll(verticalScroll),
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .drawBehind {
-                    // DrawScope 本身就是 Density，DP 常量在这里可以直接换成像素。
-                    val stroke = GRID_STROKE.toPx()
-                    val headerPx = DAY_HEADER_HEIGHT.toPx()
-                    val unitPx = UNIT_HEIGHT.toPx()
-                    val timeColPx = TIME_COL_WIDTH.toPx()
-                    val dayWidth = (size.width - timeColPx) / 7f
-                    val gridBottom = headerPx + rowCount * unitPx
-
-                    // 横线：表头顶边 + 每一节的顶边（最下面一条由下面的 Spacer 收口）
-                    for (i in 0..rowCount) {
-                        val y = headerPx + i * unitPx
-                        drawLine(gridColor, Offset(0f, y), Offset(size.width, y), stroke)
-                    }
-                    // 竖线：时间轴左沿从表头下面起（表头左侧原本就没有线），7 天的分界从顶起
-                    drawLine(gridColor, Offset(0f, headerPx), Offset(0f, gridBottom), stroke)
-                    for (i in 0..6) {
-                        val x = timeColPx + i * dayWidth
-                        drawLine(gridColor, Offset(x, 0f), Offset(x, gridBottom), stroke)
-                    }
-                },
-        ) {
-            DayHeaderRow(mondayIso)
-
-            Row(modifier = Modifier.fillMaxWidth()) {
-                TimeColumn(firstPeriod, lastPeriod, month)
-                for (day in 1..7) {
-                    DayColumn(
-                        slots = daySlots[day - 1],
-                        month = month,
-                        week = week,
-                        onCourseClick = onCourseClick,
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-            }
-
-            // 网格收口：横线只画每行的顶边，最后一行没有下线，这里补一条，
-            // 高度与颜色严格和网格线一致，避免看起来「少了一边」。
-            Spacer(
-                Modifier
+        Column(modifier = Modifier.fillMaxWidth()) {
+            // 网格卡片。`padding` 在最外层，所以下面 `drawBehind` 里的 `size`
+            // 就是卡片内部的尺寸 —— 坐标全部以卡片左上角为原点，不用再减去边距。
+            Column(
+                modifier = Modifier
                     .fillMaxWidth()
-                    .height(GRID_STROKE)
-                    .background(gridColor),
-            )
+                    .padding(GRID_MARGIN)
+                    .clip(RoundedCornerShape(GRID_CORNER))
+                    .background(cellBackground)
+                    .drawBehind {
+                        // DrawScope 本身就是 Density，DP 常量在这里可以直接换成像素。
+                        val stroke = GRID_STROKE.toPx()
+                        val headerPx = DAY_HEADER_HEIGHT.toPx()
+                        val unitPx = UNIT_HEIGHT.toPx()
+                        val timeColPx = TIME_COL_WIDTH.toPx()
+                        val dayWidth = (size.width - timeColPx) / 7f
+                        val gridBottom = headerPx + rowCount * unitPx
+
+                        // 表头与时间轴：两块极淡的底色，把「这是标签」和「这是课程区」分开。
+                        drawRect(gutterColor, Offset.Zero, Size(size.width, headerPx))
+                        drawRect(
+                            gutterColor,
+                            Offset(0f, headerPx),
+                            Size(timeColPx, gridBottom - headerPx),
+                        )
+
+                        // 骨架：表头底边（整条，一直画到时间轴左侧）+ 时间轴右沿。
+                        // 这两条用全浓度，其余格内线用半浓度。
+                        drawLine(gridColor, Offset(0f, headerPx), Offset(size.width, headerPx), stroke)
+                        drawLine(gridColor, Offset(timeColPx, headerPx), Offset(timeColPx, gridBottom), stroke)
+
+                        // 节次横线：从时间轴右沿起，**不穿过时间轴**。
+                        // 时间轴有自己的底色，是一栏独立的地带，不是网格的一部分。
+                        // 最后一行下面不画：那是卡片外框。
+                        for (i in 1 until rowCount) {
+                            val y = headerPx + i * unitPx
+                            drawLine(gridLineColor, Offset(timeColPx, y), Offset(size.width, y), stroke)
+                        }
+
+                        // 星期分界线：从卡片顶起、穿过表头 —— 日期要和自己那一列对得上。
+                        // 两端的 x = 0 和 x = size.width 是卡片外框，不重复画。
+                        for (i in 1..6) {
+                            val x = timeColPx + i * dayWidth
+                            drawLine(gridLineColor, Offset(x, 0f), Offset(x, gridBottom), stroke)
+                        }
+
+                        // 外框。`Stroke` 以路径为中心往两侧各画一半，所以路径要内缩半条线宽，
+                        // 否则外侧那一半会被上面的 `clip` 切掉，框看起来只有一半粗。
+                        val inset = stroke / 2f
+                        val cornerPx = GRID_CORNER.toPx() - inset
+                        drawRoundRect(
+                            color = gridColor,
+                            topLeft = Offset(inset, inset),
+                            size = Size(size.width - stroke, size.height - stroke),
+                            cornerRadius = CornerRadius(cornerPx, cornerPx),
+                            style = Stroke(stroke),
+                        )
+                    },
+            ) {
+                DayHeaderRow(mondayIso)
+
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    TimeColumn(firstPeriod, lastPeriod, month)
+                    for (day in 1..7) {
+                        DayColumn(
+                            slots = daySlots[day - 1],
+                            month = month,
+                            week = week,
+                            onCourseClick = onCourseClick,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+                // 网格到此为止：最下面那条线由卡片外框收口，不需要再补一条。
+            }
 
             if (!hasAnyCourse) {
                 Text(
                     "这一周没有课",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = TIME_COL_WIDTH + 12.dp, top = 12.dp),
+                    modifier = Modifier.padding(start = GRID_MARGIN + TIME_COL_WIDTH + 12.dp, top = 12.dp),
                 )
             }
             Spacer(Modifier.height(20.dp))
@@ -498,7 +562,13 @@ private fun DayHeaderRow(mondayIso: String?) {
     }
 }
 
-/** 左侧时间轴：**按节次逐行**，每行只占一个单位高度，因此和右侧合并格子的边界天然对齐。 */
+/**
+ * 左侧时间轴：**按节次逐行**，每行只占一个单位高度，因此和右侧合并格子的边界天然对齐。
+ *
+ * 底色和「节次横线不穿过这里」都是在 [WeekPage] 的 `drawBehind` 里画的（见 [GUTTER_ALPHA]），
+ * 这一栏自己一个绘制节点都不占。文字仍然是居中的：跨多节的连堂课合并之后，
+ * 右侧的格子已经不再是「一节一行」，时间轴保持逐行居中反而最好对。
+ */
 @Composable
 private fun TimeColumn(
     firstPeriod: Int,
