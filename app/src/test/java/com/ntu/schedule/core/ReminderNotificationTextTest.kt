@@ -100,6 +100,7 @@ class ReminderNotificationTextTest {
     @Test
     fun `标题写清提前量`() {
         assertEquals("还有 1 小时上课", ReminderPlanner.title())
-        assertEquals(60, ReminderPlanner.LEAD_MINUTES)
+        assertEquals("还有 30 分钟上课", ReminderPlanner.title(30))
+        assertEquals(60, ReminderPlanner.DEFAULT_LEAD_MINUTES)
     }
 }

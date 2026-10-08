@@ -45,6 +45,7 @@ fun BackgroundSettingsDialog(
     appearance: Appearance,
     onDismiss: () -> Unit,
     onPickImage: () -> Unit,
+    onRecrop: () -> Unit,
     onMode: (BackgroundMode) -> Unit,
     onColor: (Int) -> Unit,
     onGradient: (Int, Int) -> Unit,
@@ -118,15 +119,29 @@ fun BackgroundSettingsDialog(
                     BackgroundMode.IMAGE -> {
                         SectionLabel("来自相册")
                         Spacer(Modifier.height(8.dp))
-                        TextButton(onClick = onPickImage) {
-                            Text(
-                                if (appearance.imageName.isNullOrBlank()) "选一张图片"
-                                else "换一张图片",
-                            )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(onClick = onPickImage) {
+                                Text(
+                                    if (appearance.imageName.isNullOrBlank()) "选一张图片"
+                                    else "换一张图片",
+                                )
+                            }
+                            // 只有已经有图、且那张图确实铺不满（也就是裁掉过东西）时才给这个入口：
+                            // 一张比例刚好合适的图，「选区域」进去也只能原地不动。
+                            if (!appearance.imageName.isNullOrBlank()) {
+                                TextButton(onClick = onRecrop) { Text("重新选择区域") }
+                            }
                         }
                         Text(
-                            "图片会被复制一份到 App 自己的目录里（不超过 12MB），" +
-                                "所以之后删掉相册原图也不影响背景。",
+                            if (appearance.imageCrop == null) {
+                                "图片会被复制一份到 App 自己的目录里（不超过 12MB），" +
+                                    "所以之后删掉相册原图也不影响背景。\n" +
+                                    "现在按屏幕比例自动居中裁剪，选好之后可以点「重新选择区域」自己挑要留哪一块。"
+                            } else {
+                                "图片会被复制一份到 App 自己的目录里（不超过 12MB），" +
+                                    "所以之后删掉相册原图也不影响背景。\n" +
+                                    "当前显示的是你手选的那一块；点「重新选择区域」可以调整，点「恢复默认背景」会一起清掉。"
+                            },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )

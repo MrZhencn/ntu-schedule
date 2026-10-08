@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import com.ntu.schedule.core.ReminderPlanner
+import com.ntu.schedule.core.ReminderSettings
 
 /**
  * 收到「上课提醒」闹钟 → 弹一条横幅；收到每日续排闹钟 → 把提醒窗口往前挪一天。
@@ -29,10 +30,13 @@ class ReminderReceiver : BroadcastReceiver() {
         val teacher = intent.getStringExtra(ReminderScheduler.EXTRA_TEACHER).orEmpty()
         val periods = intent.getStringExtra(ReminderScheduler.EXTRA_PERIODS).orEmpty()
         val notifyId = intent.getIntExtra(ReminderScheduler.EXTRA_NOTIFY_ID, DEFAULT_NOTIFY_ID)
+        // 提前量随闹钟带过来，标题才对得上用户设的那一档。
+        // 老闹钟（升级前排的）没有这个 extra，退回默认的 1 小时。
+        val lead = intent.getIntExtra(ReminderScheduler.EXTRA_LEAD, ReminderSettings.DEFAULT.leadMinutes)
 
         ReminderNotification.post(
             context = context,
-            title = ReminderPlanner.title(),
+            title = ReminderPlanner.title(lead),
             text = ReminderPlanner.body(course, start, end, room),
             bigText = ReminderPlanner.bigText(course, start, end, periods, room, teacher),
             notifyId = notifyId,

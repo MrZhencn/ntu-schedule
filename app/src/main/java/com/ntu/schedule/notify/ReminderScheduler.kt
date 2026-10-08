@@ -7,11 +7,13 @@ import android.content.Intent
 import com.ntu.schedule.core.DateUtil
 import com.ntu.schedule.core.ReminderPlan
 import com.ntu.schedule.core.ReminderPlanner
+import com.ntu.schedule.core.ReminderSettings
 import com.ntu.schedule.core.Schedule
+import com.ntu.schedule.data.ReminderStore
 import com.ntu.schedule.data.ScheduleStore
 
 /**
- * 给未来若干天的每一节课排一个「上课前 1 小时」的闹钟。
+ * 给未来若干天的每一节课排一个「上课前 N 分钟」的闹钟（N 由用户在提醒设置里选，默认 1 小时）。
  *
  * 三个刻意的决定：
  *
@@ -41,6 +43,14 @@ object ReminderScheduler {
     const val EXTRA_PERIODS = "periods"
     const val EXTRA_NOTIFY_ID = "notifyId"
 
+    /**
+     * 这条闹钟是按「提前多少分钟」排的。
+     *
+     * 必须随闹钟一起带过去：通知标题「还有 N 分钟上课」是**用户能看到自己设置生效的唯一证据**，
+     * 而接收器发通知时再去读一次磁盘既慢又可能读到已经改过的值（闹钟还是按旧提前量排的）。
+     */
+    const val EXTRA_LEAD = "leadMinutes"
+
     private const val DAYS = 7
     private const val PER_DAY = 32
     private const val SLOT_COUNT = DAYS * PER_DAY
@@ -67,11 +77,16 @@ object ReminderScheduler {
         val exact = OemSettings.canScheduleExactAlarms(context)
 
         val today = DateUtil.todayIso()
+        // 提前量是用户可调的，读一次就用在整批排程上；改设置后必须再调一次 refresh，
+        // 否则已经排出去的闹钟还按旧提前量响（见 AppViewModel.setReminderLead）。
+        val lead = runCatching { ReminderStore(context).load().leadMinutes }
+            .getOrDefault(ReminderSettings.DEFAULT.leadMinutes)
         val plans = ReminderPlanner.plan(
             schedule = schedule,
             fromDateIso = today,
             daysAhead = DAYS,
             nowMinuteOfDay = DateUtil.nowMinuteOfDay(),
+            leadMinutes = lead,
         )
 
         for ((dateIso, dayPlans) in plans.groupBy { it.dateIso }) {
@@ -85,7 +100,7 @@ object ReminderScheduler {
                     plan.atMinuteOfDay * 60_000L
                 if (triggerAt <= System.currentTimeMillis()) return@forEachIndexed
 
-                val pi = alarmIntent(context, plan, requestCode)
+                val pi = alarmIntent(context, plan, requestCode, lead)
                 setAlarm(manager, triggerAt, pi, exact)
             }
         }
@@ -134,7 +149,7 @@ object ReminderScheduler {
         }
     }
 
-    private fun alarmIntent(context: Context, plan: ReminderPlan, requestCode: Int): PendingIntent {
+    private fun alarmIntent(context: Context, plan: ReminderPlan, requestCode: Int, leadMinutes: Int): PendingIntent {
         val intent = Intent(context, ReminderReceiver::class.java)
             .setAction(ReminderReceiver.ACTION_REMIND)
             .putExtra(EXTRA_DATE, plan.dateIso)
@@ -145,6 +160,7 @@ object ReminderScheduler {
             .putExtra(EXTRA_END, plan.endTime)
             .putExtra(EXTRA_PERIODS, plan.course.periodText)
             .putExtra(EXTRA_NOTIFY_ID, requestCode)
+            .putExtra(EXTRA_LEAD, leadMinutes)
         return PendingIntent.getBroadcast(
             context,
             requestCode,

@@ -9,8 +9,12 @@ import androidx.lifecycle.viewModelScope
 import com.ntu.schedule.core.Appearance
 import com.ntu.schedule.core.BackgroundMode
 import com.ntu.schedule.core.DateUtil
+import com.ntu.schedule.core.ImageCrop
+import com.ntu.schedule.core.ReminderPlanner
+import com.ntu.schedule.core.ReminderSettings
 import com.ntu.schedule.core.Schedule
 import com.ntu.schedule.data.AppearanceStore
+import com.ntu.schedule.data.ReminderStore
 import com.ntu.schedule.data.ScheduleRepository
 import com.ntu.schedule.diagnostics.Breadcrumbs
 import com.ntu.schedule.notify.NotificationChannels
@@ -21,6 +25,19 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+
+/**
+ * 正在等用户「选显示区域」的那张图。
+ *
+ * @param isNew 这次才复制进私有目录的（取消时要把这个文件删掉，免得留一堆没人用的图）。
+ *              false 表示就是当前这张背景图（重新选区域），取消时什么都不用动。
+ * @param initialCrop 进去时先摆成什么样。新选的图给 null（居中），重新选区域时给现在这块。
+ */
+data class PendingImage(
+    val name: String,
+    val isNew: Boolean,
+    val initialCrop: ImageCrop?,
+)
 
 /**
  * 界面状态。
@@ -73,6 +90,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val _appearance = MutableStateFlow(Appearance.DEFAULT)
     val appearance: StateFlow<Appearance> = _appearance.asStateFlow()
 
+    private val reminderStore = ReminderStore(app)
+
+    /** 上课提醒的提前量（分钟）。默认 1 小时，可选 10/20/30/60/120。 */
+    private val _reminderLead = MutableStateFlow(ReminderSettings.DEFAULT.leadMinutes)
+    val reminderLead: StateFlow<Int> = _reminderLead.asStateFlow()
+
+    /**
+     * 选好图片之后、定下显示区域之前的那张图。非 null 时界面弹裁切框。
+     *
+     * 刻意**先不动 [_appearance]**：用户在裁切框里点取消时，背景必须还是原来那张
+     * （甚至原来那个区域），不能中途闪一下新图。
+     */
+    private val _pendingImage = MutableStateFlow<PendingImage?>(null)
+    val pendingImage: StateFlow<PendingImage?> = _pendingImage.asStateFlow()
+
     init {
         _schedule.value = repo.loadLocal()
         _canRememberPassword.value = repo.canRememberPassword()
@@ -82,6 +114,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // 每次冷启动都重排一次提醒：既是把 7 天窗口往前滚，也顺手修掉被 ROM 清掉的闹钟
         ReminderScheduler.refresh(appContext)
         loadAppearance()
+        _reminderLead.value = reminderStore.load().leadMinutes
     }
 
     /**
@@ -287,23 +320,72 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * 用相册里选中的图片当背景。
+     * 相册里选中了一张图：先**复制**进 App 私有目录，再交给用户选显示区域。
      *
-     * 先把图**复制**进 App 私有目录再切模式：直接记 `content://` 的话权限是临时的，
-     * 或者用户随手把原图删了，背景就会变成一片黑。
+     * 为什么先复制再裁：直接记 `content://` 的话权限是临时的，或者用户随手把原图删了，
+     * 背景就会变成一片黑；而且裁切界面要反复解码这张图，从私有目录读文件比每次过一遍
+     * `contentResolver` 稳得多。
      *
-     * 遮罩一并归零（[Appearance.withImage]）：上一张图调过的压暗程度不该带到新图上。
+     * 这一步**不动当前背景**，等 [confirmCrop] 才生效。
      */
-    fun setBackgroundImage(uri: Uri) {
+    fun beginImagePick(uri: Uri) {
         val name = appearanceStore.importImage(uri)
         if (name == null) {
             _message.value = "这张图读不出来，换一张试试（可能是 HEIC 格式，或文件太大）"
             return
         }
+        _pendingImage.value = PendingImage(name = name, isNew = true, initialCrop = null)
+    }
+
+    /** 对现在这张背景图重新选区域。 */
+    fun beginRecrop() {
+        val current = _appearance.value
+        if (current.mode != BackgroundMode.IMAGE) return
+        val name = current.imageName ?: return
+        if (!appearanceStore.imageExists(name)) {
+            _message.value = "背景图不见了，请重新选一张"
+            return
+        }
+        _pendingImage.value = PendingImage(name = name, isNew = false, initialCrop = current.imageCrop)
+    }
+
+    /**
+     * 定下显示区域。
+     *
+     * @param crop null 表示「恢复成默认的居中裁剪」。
+     */
+    fun confirmCrop(crop: ImageCrop?) {
+        val pending = _pendingImage.value ?: return
+        _pendingImage.value = null
+
         val old = _appearance.value.imageName
-        updateAppearance { it.withImage(name) }
-        if (old != null && old != name) appearanceStore.deleteImage(old)
-        _message.value = "背景已设置"
+        updateAppearance { it.withImage(pending.name, crop) }
+        // 图删在状态切换之后：先切状态再删文件的话，删的瞬间界面还可能引用着这张图
+        if (old != null && old != pending.name) appearanceStore.deleteImage(old)
+        _message.value = if (crop == null) "背景已设置（居中裁剪）" else "背景已设置"
+    }
+
+    /** 放弃这次选区域。新导入的那张图要删掉，否则私有目录里会越攒越多没人用的图。 */
+    fun cancelCrop() {
+        val pending = _pendingImage.value ?: return
+        _pendingImage.value = null
+        if (pending.isNew) appearanceStore.deleteImage(pending.name)
+    }
+
+    /**
+     * 换一档提前量。
+     *
+     * 存完必须**立刻重排闹钟**：已经排出去的每一条都是按旧提前量算的时刻，
+     * 而通知标题里的「还有 N 分钟上课」也是随闹钟带过去的。不重排的话，用户改完设置
+     * 会看到未来几天仍然按老时间响、标题还写着老时长 —— 看起来就像设置没生效。
+     */
+    fun setReminderLead(minutes: Int) {
+        val next = ReminderSettings.sanitize(minutes)
+        if (next == _reminderLead.value) return
+        reminderStore.save(ReminderSettings(leadMinutes = next))
+        _reminderLead.value = next
+        Breadcrumbs.add("reminder", "提前量改成 ${ReminderPlanner.leadText(next)}")
+        ReminderScheduler.refresh(appContext)
     }
 
     private fun updateAppearance(change: (Appearance) -> Appearance) {

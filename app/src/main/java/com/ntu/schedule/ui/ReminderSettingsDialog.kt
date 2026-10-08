@@ -1,6 +1,10 @@
 package com.ntu.schedule.ui
 
 import android.os.Build
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -10,6 +14,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
@@ -20,9 +25,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.ntu.schedule.core.ReminderPlanner
 import com.ntu.schedule.notify.NotificationChannels
 import com.ntu.schedule.notify.OemSettings
 
@@ -37,11 +45,15 @@ import com.ntu.schedule.notify.OemSettings
  * 外层会用新的 [refreshKey] 重建本面板，状态立刻刷新 —— 不用手动关掉再打开。
  *
  * @param refreshKey 每次 App 回到前台都会 +1，用来触发重新检测。
+ * @param leadMinutes 当前的提前量（上课前多少分钟）。
+ * @param onLead 换一档提前量。
  * @param onTest 发一条测试横幅。
  */
 @Composable
 fun ReminderSettingsDialog(
     refreshKey: Int,
+    leadMinutes: Int,
+    onLead: (Int) -> Unit,
     onDismiss: () -> Unit,
     onTest: () -> Unit,
 ) {
@@ -61,8 +73,30 @@ fun ReminderSettingsDialog(
                     .heightIn(max = 430.dp),
             ) {
                 Text(
-                    "每节课开始前 1 小时，会像 QQ、微信消息那样从屏幕顶部弹出一条横幅。" +
-                        "下面几项决定了横幅到底能不能弹出来 —— 每一项都可以点右边的按钮去设置，" +
+                    "每节课开始前 ${ReminderPlanner.leadText(leadMinutes)}，会像 QQ、微信消息那样从屏幕顶部弹出一条横幅。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(10.dp))
+
+                Text(
+                    "提前多久提醒",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
+                )
+                Spacer(Modifier.height(6.dp))
+                LeadRow(current = leadMinutes, onLead = onLead)
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "改完会立刻按新的提前量重排所有闹钟。提前 2 小时的话，早上第 1 节" +
+                        "（07:50）会在 05:50 提醒。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+
+                Spacer(Modifier.height(14.dp))
+                Text(
+                    "下面几项决定了横幅到底能不能弹出来 —— 每一项都可以点右边的按钮去设置，" +
                         "改完回来这里会自动重新检测。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -148,6 +182,41 @@ fun ReminderSettingsDialog(
             TextButton(onClick = onDismiss) { Text("关闭") }
         },
     )
+}
+
+/**
+ * 五档提前量。
+ *
+ * 做成固定几档而不是滑块或输入框：这个值决定「还有 N 分钟上课」那句话，也决定闹钟排在哪，
+ * 一档一档地给比让用户填 47 分钟更好理解，也免得填出 0 或负数。
+ */
+@Composable
+private fun LeadRow(current: Int, onLead: (Int) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        ReminderPlanner.PRESET_LEAD_MINUTES.forEach { minutes ->
+            val selected = minutes == current
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(36.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(
+                        if (selected) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.surfaceVariant,
+                    )
+                    .clickable { onLead(minutes) },
+            ) {
+                Text(
+                    ReminderPlanner.leadText(minutes),
+                    fontSize = 12.sp,
+                    fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
+                    color = if (selected) MaterialTheme.colorScheme.onPrimary
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
 }
 
 /**

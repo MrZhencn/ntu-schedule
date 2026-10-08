@@ -69,6 +69,7 @@ import com.ntu.schedule.ui.AppViewModel
 import com.ntu.schedule.ui.BackgroundSettingsDialog
 import com.ntu.schedule.ui.DiagnosticsDialog
 import com.ntu.schedule.ui.ImportDialog
+import com.ntu.schedule.ui.ImageCropDialog
 import com.ntu.schedule.ui.LocalAppearance
 import com.ntu.schedule.ui.LoginScreen
 import com.ntu.schedule.ui.ReminderSettingsDialog
@@ -134,6 +135,8 @@ private fun AppRootBody(vm: AppViewModel, appearance: Appearance) {
     val canRemember by vm.canRememberPassword.collectAsStateWithLifecycle()
     val notificationsEnabled by vm.notificationsEnabled.collectAsStateWithLifecycle()
     val askNotification by vm.askNotificationPermission.collectAsStateWithLifecycle()
+    val reminderLead by vm.reminderLead.collectAsStateWithLifecycle()
+    val pendingImage by vm.pendingImage.collectAsStateWithLifecycle()
 
     var tab by remember { mutableStateOf(Tab.Today) }
     var showImport by remember { mutableStateOf(false) }
@@ -165,9 +168,11 @@ private fun AppRootBody(vm: AppViewModel, appearance: Appearance) {
     // androidx 会退回 ACTION_OPEN_DOCUMENT，行为在各家 ROM 上并不一致；
     // 而 ACTION_GET_CONTENT 从 API 1 就在，且我们**立刻把图复制进私有目录**，
     // 不需要可持久化的读取权限，所以用最朴素的那个反而最稳。
+    //
+    // 回调里只是「复制 + 挂起待裁」，真正切背景要等用户在裁切框里点确定。
     val imageLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent(),
-    ) { uri -> if (uri != null) vm.setBackgroundImage(uri) }
+    ) { uri -> if (uri != null) vm.beginImagePick(uri) }
 
     // 从系统设置里开完通知返回时，状态要跟着更新
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -395,6 +400,8 @@ private fun AppRootBody(vm: AppViewModel, appearance: Appearance) {
     if (showReminderInfo) {
         ReminderSettingsDialog(
             refreshKey = resumeTick,
+            leadMinutes = reminderLead,
+            onLead = { vm.setReminderLead(it) },
             onDismiss = { showReminderInfo = false },
             onTest = { vm.sendTestReminder() },
         )
@@ -405,11 +412,23 @@ private fun AppRootBody(vm: AppViewModel, appearance: Appearance) {
             appearance = appearance,
             onDismiss = { showBackground = false },
             onPickImage = { imageLauncher.launch("image/*") },
+            onRecrop = { vm.beginRecrop() },
             onMode = { vm.setBackgroundMode(it) },
             onColor = { vm.setBackgroundColor(it) },
             onGradient = { start, end -> vm.setBackgroundGradient(start, end) },
             onDim = { vm.setBackgroundDim(it) },
             onReset = { vm.clearBackground() },
+        )
+    }
+
+    // 选好图（或点了「重新选择区域」）之后弹这个框，用户拖一拖、缩一缩决定留哪一块。
+    // 确认前不动背景，所以取消键点下去视觉上什么都没发生。
+    pendingImage?.let { pending ->
+        ImageCropDialog(
+            imageName = pending.name,
+            initialCrop = pending.initialCrop,
+            onCancel = { vm.cancelCrop() },
+            onConfirm = { vm.confirmCrop(it) },
         )
     }
 

@@ -33,6 +33,13 @@ data class Appearance(
     val dimPercent: Int = DEFAULT_DIM,
     /** 存在 App 私有目录里的图片文件名；[BackgroundMode.IMAGE] 时才有意义。 */
     val imageName: String? = null,
+    /**
+     * 图片里显示哪一块（用户在裁切界面手选的）。
+     *
+     * `null` = 没选过，按屏幕比例**居中裁剪** —— 也就是这个功能之前的行为，
+     * 所以老存档读进来一切照旧。见 [ImageCrop.visiblePixels]。
+     */
+    val imageCrop: ImageCrop? = null,
 ) {
 
     /** 有没有自定义背景。没有的话各页面用主题色，有的话格子要变半透明让背景透出来。 */
@@ -53,9 +60,20 @@ data class Appearance(
      *
      * 遮罩**重置成 [DEFAULT_DIM]**，不复用纯色/渐变时调好的值：换图是个新的开始，
      * 上一张图压到 60% 不代表这一张也要压到 60%。
+     *
+     * @param crop 用户在裁切界面选的区域；不给就是居中裁剪。
      */
-    fun withImage(name: String): Appearance =
-        copy(mode = BackgroundMode.IMAGE, imageName = name, dimPercent = DEFAULT_DIM)
+    fun withImage(name: String, crop: ImageCrop? = null): Appearance =
+        copy(
+            mode = BackgroundMode.IMAGE,
+            imageName = name,
+            imageCrop = crop?.takeIf { it.isValid && !it.isFull },
+            dimPercent = DEFAULT_DIM,
+        )
+
+    /** 换一张图，但保留当前这张已经调好的显示区域（重新选区域时用）。 */
+    fun withCrop(crop: ImageCrop?): Appearance =
+        copy(imageCrop = crop?.takeIf { it.isValid && !it.isFull })
 
     /** 遮罩不透明度，0f..0.8f。 */
     fun dimFraction(): Float = dimPercent.coerceIn(0, MAX_DIM).toFloat() / 100f
@@ -126,6 +144,7 @@ data class Appearance(
                 colorEnd = end,
                 dimPercent = dim.coerceIn(0, MAX_DIM),
                 imageName = image,
+                imageCrop = if (mode == BackgroundMode.IMAGE) ImageCrop.fromJsonValue(root["imageCrop"]) else null,
             )
             // 图片模式但文件名没了（用户清了缓存、换了手机），退回默认而不是画一片黑
             return if (parsed.mode == BackgroundMode.IMAGE && parsed.imageName == null) DEFAULT else parsed
@@ -138,6 +157,7 @@ data class Appearance(
             "colorEnd" to JsonValue.of(appearance.colorEnd),
             "dimPercent" to JsonValue.of(appearance.dimPercent.coerceIn(0, MAX_DIM)),
             "imageName" to JsonValue.of(appearance.imageName),
+            "imageCrop" to (appearance.imageCrop?.takeIf { it.isValid }?.toJsonValue() ?: JsonValue.Null),
         ).toJsonString()
     }
 }

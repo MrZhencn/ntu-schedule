@@ -217,9 +217,72 @@ class ReminderPlannerTest {
     // ------------------------------------------------------------ 通知文案
 
     @Test
-    fun `提醒标题固定为还有一小时上课`() {
+    fun `提醒标题默认是还有一小时上课`() {
         assertEquals("还有 1 小时上课", ReminderPlanner.title())
-        assertEquals(60, ReminderPlanner.LEAD_MINUTES)
+        assertEquals(60, ReminderPlanner.DEFAULT_LEAD_MINUTES)
+    }
+
+    // ------------------------------------------------------------ 提前量可配
+
+    @Test
+    fun `提前量文案把整小时写成小时其余写分钟`() {
+        assertEquals("10 分钟", ReminderPlanner.leadText(10))
+        assertEquals("20 分钟", ReminderPlanner.leadText(20))
+        assertEquals("30 分钟", ReminderPlanner.leadText(30))
+        assertEquals("1 小时", ReminderPlanner.leadText(60))
+        assertEquals("2 小时", ReminderPlanner.leadText(120))
+        // 90 既不是整小时也不是预设档，但函数本身要给出合理说法（不能崩、不能写出「1.5 小时」）
+        assertEquals("90 分钟", ReminderPlanner.leadText(90))
+    }
+
+    @Test
+    fun `五档预设就是需求里说的那五个`() {
+        assertEquals(listOf(10, 20, 30, 60, 120), ReminderPlanner.PRESET_LEAD_MINUTES)
+    }
+
+    @Test
+    fun `提醒标题跟着提前量走`() {
+        assertEquals("还有 10 分钟上课", ReminderPlanner.title(10))
+        assertEquals("还有 30 分钟上课", ReminderPlanner.title(30))
+        assertEquals("还有 1 小时上课", ReminderPlanner.title(60))
+        assertEquals("还有 2 小时上课", ReminderPlanner.title(120))
+    }
+
+    @Test
+    fun `提前十分钟时早课排在七点四十`() {
+        val s = scheduleOf(course("早课", 4, 1, 1))
+        val plan = ReminderPlanner.plan(s, "2026-10-08", daysAhead = 1, leadMinutes = 10).single()
+        // 提前量只挪「几点响」，上课时间本身还是 07:50
+        assertEquals("07:50", plan.startTime)
+        assertEquals("07:40", plan.atText)
+        assertEquals("2026-10-08", plan.dateIso)
+    }
+
+    @Test
+    fun `提前两小时时早课排在五点五十`() {
+        // 冬令第 1 节 07:50 往前两小时是 05:50，**不会跨到前一天** ——
+        // 这是「2 小时档」不需要处理日期回退的原因，钉住它。
+        val s = scheduleOf(course("早课", 4, 1, 1))
+        val plan = ReminderPlanner.plan(s, "2026-10-08", daysAhead = 1, leadMinutes = 120).single()
+        assertEquals("05:50", plan.atText)
+        assertEquals("2026-10-08", plan.dateIso)
+    }
+
+    @Test
+    fun `提前量传负数当零处理也就是正点提醒`() {
+        val s = scheduleOf(course("早课", 4, 1, 1))
+        val plan = ReminderPlanner.plan(s, "2026-10-08", daysAhead = 1, leadMinutes = -30).single()
+        assertEquals("07:50", plan.atText)
+    }
+
+    @Test
+    fun `同一天不同提前量排出的条数一样多`() {
+        // 提前量只改「几点响」，不该把任何一节课挤出窗口
+        val base = ReminderPlanner.plan(realSchedule, "2026-10-08", daysAhead = 1)
+        for (lead in ReminderPlanner.PRESET_LEAD_MINUTES) {
+            val plans = ReminderPlanner.plan(realSchedule, "2026-10-08", daysAhead = 1, leadMinutes = lead)
+            assertEquals("提前 $lead 分钟时条数变了", base.size, plans.size)
+        }
     }
 
     @Test

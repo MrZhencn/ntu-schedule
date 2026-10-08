@@ -69,7 +69,9 @@ object NotificationChannels {
             REMINDER_NAME,
             NotificationManager.IMPORTANCE_HIGH,
         ).apply {
-            description = "上课前 1 小时弹一条横幅（悬浮）提醒，由课表 App 在本地计算并发出"
+            // 刻意不写具体时长：渠道一旦建好，描述就改不动了（系统只在第一次创建时采纳），
+            // 而提前量是用户随时能调的 —— 写死「1 小时」会在用户改成 10 分钟之后一直说谎。
+            description = "每节课开始前按你设置的提前量弹一条横幅（悬浮）提醒，由课表 App 在本地计算并发出"
             enableVibration(true)
             vibrationPattern = VIBRATION
             setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION), audio)
