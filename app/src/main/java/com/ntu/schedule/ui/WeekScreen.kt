@@ -42,6 +42,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.text.font.FontWeight
@@ -63,6 +64,23 @@ private val TIME_COL_WIDTH = 40.dp
 private val UNIT_HEIGHT = 54.dp
 private val DAY_HEADER_HEIGHT = 40.dp
 private val GRID_STROKE = 0.5.dp
+
+/**
+ * 课程格子的圆角与四周留白。
+ *
+ * 留白不是为了好看，是**必须**的：圆角只有离开网格线才看得出来。贴着格子边缘画圆角，
+ * 圆的四角会正好压在网格线上 —— 竖线被色块吃掉半条（0.5dp 的线只剩 0.25dp），
+ * 横线也一样，整张网格会看起来粗细不匀。
+ *
+ * 内缩之后，缝里露出来的是页面底色和整页统一画的 0.5dp 网格线，
+ * 视觉上就变成「浮在网格上的一叠圆角卡片」。
+ *
+ * 取值是按列宽定的：一天大约 46dp 宽，左右各让 1.5dp 还剩 43dp，
+ * 8dp 圆角在这张卡片上已经很清楚，又不会圆到像药丸。
+ */
+private val COURSE_CORNER = 8.dp
+private val COURSE_INSET_H = 1.5.dp
+private val COURSE_INSET_V = 1.dp
 
 /**
  * 周课表：**左右翻页**，一页一周，从第 1 周划到第 19 周；每周内部纵向滚动。
@@ -309,6 +327,8 @@ private fun WeekJumpDialog(
  * 1. **整个网格只用一条 `drawBehind` 画线**。原来是每个格子自己画顶边和左边
  *    （一页 104 个 `drawBehind` + 96 个 `background`），拖动时每帧要重跑两百个绘制节点。
  *    网格是规则的，横线就在 `表头高 + n × 单位高` 处，竖线按 7 等分算就行。
+ *    这些线画在父节点上，**在课程色块下面**；色块四周留了白（见 [COURSE_CORNER]），
+ *    线就从缝里透出来 —— 圆角卡片浮在网格上，靠的正是这个层次关系。
  * 2. **连续的空节次合并成一段**（见 [mergeEmptyRuns]）：7 天里通常只有两三段有课，
  *    一页的格子节点从 84 个降到 20 多个。
  * 3. 底色只铺一次（整页一个），不再每个格子叠一层。
@@ -513,8 +533,12 @@ private fun TimeColumn(
 }
 
 /**
- * 一天。格子**紧密堆叠、不设间距**，网格线由整页统一画（见 [WeekPage]）——
- * 连堂课是一整个格子，中间不会有横线；相邻两个格子之间也只有一条 0.5dp 的线，不会出现缝。
+ * 一天。**布局上格子仍然紧密堆叠、不设间距**，网格线由整页统一画（见 [WeekPage]）——
+ * 连堂课是一整个格子，中间不会有横线。
+ *
+ * 相邻格子之间那条 0.5dp 的线是**画在底下的**，课程色块盖在上面；色块自己向内缩了
+ * [COURSE_INSET_V]（见 [CourseCellContent]），所以线会从缝里完整露出来。
+ * 空格子是完全透明的 [Spacer]，不产生任何绘制节点。
  */
 @Composable
 private fun DayColumn(
@@ -585,6 +609,12 @@ private fun CourseCellContent(
     val endText = ClassTimes.slotOf(course.endPeriod, month)?.end.orEmpty()
     Column(
         modifier = modifier
+            // 先内缩，再画圆角色块（见 COURSE_CORNER 的说明）。
+            .padding(horizontal = COURSE_INSET_H, vertical = COURSE_INSET_V)
+            // 顺序要紧：`clip` 必须在 `background` 和 `clickable` **之前**。
+            // 色块本身用 RoundedCornerShape 也能画出圆角，但那样只圆了背景，
+            // 点下去的水波纹仍是方形的 —— 会从四个角溢出色块外面。
+            .clip(RoundedCornerShape(COURSE_CORNER))
             // 周课表里唯一保留的「突出」：每门课按课程名稳定分配一种底色，
             // 同一门课每周、每次打开都是同一个颜色，方便一眼扫到。
             .background(courseColor(course.colorIndex))
