@@ -88,9 +88,9 @@ private val COURSE_INSET_V = 1.dp
 /**
  * 整张网格本身就是一张卡片：四周留边、圆角、一条 0.5dp 的外框。
  *
- * 留边是为了让网格从「铺满整屏的白」变成「浮在页面上的一张表」。不设自定义背景时
- * 页面和卡片都是白的，全靠这条外框把两者的边界交代清楚；设了图片/渐变背景之后，
- * 这 8dp 的缝里透出来的就是用户自己的背景，卡片感更明显。
+ * 留边是为了让网格从「铺满整屏的白」变成「浮在页面上的一张表」。**卡片自己不铺底色**
+ * （见 [WeekPage]），所以这 8dp 的缝和没课的格子一样，透出来的都是用户自己的背景 ——
+ * 设了图片/渐变之后整张表就是浮在背景上的一层线，卡片感反而更明显。
  *
  * 圆角取 14dp，和今日课表、设置页的卡片是同一个数（[com.ntu.schedule.ui.TodayScreen]）。
  */
@@ -365,7 +365,10 @@ private fun WeekJumpDialog(
  *    **没有多出任何绘制节点**，拖动时每帧要跑的仍然只有这一个 `drawBehind`。
  * 2. **连续的空节次合并成一段**（见 [mergeEmptyRuns]）：7 天里通常只有两三段有课，
  *    一页的格子节点从 84 个降到 20 多个。
- * 3. 底色只铺一次（整页一个），不再每个格子叠一层。
+ * 3. **这一页一张底色都不铺**：没课的格子是完全透明的，直接在全局背景上留白 ——
+ *    设了图片/渐变之后，能看见的就是背景本身，而不是盖了一层 90% 白的 grid。
+ *    不设自定义背景时 `AppBackground` 的「默认」模式画的本来就是同一个 `surface`，
+ *    所以观感和以前一模一样，白底上不会缺一块。
  * 4. [CourseBlocks.ofDay] 的结果按 `(本周课程, 首节, 末节)` 缓存，划回来不重算。
  */
 @Composable
@@ -398,13 +401,12 @@ private fun WeekPage(
     // 格内线：同一个颜色冲淡，不另引入一种灰。
     val gridLineColor = gridColor.copy(alpha = GRID_LINE_ALPHA)
     val gutterColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = GUTTER_ALPHA)
-    val cellBackground = panelColor()
     val rowCount = lastPeriod - firstPeriod + 1
 
+    // 这一页**自己一张底色都不铺**：没课的格子该直接透出全局背景（见 [WeekPage]）。
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(cellBackground)
             .verticalScroll(verticalScroll),
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
@@ -415,7 +417,6 @@ private fun WeekPage(
                     .fillMaxWidth()
                     .padding(GRID_MARGIN)
                     .clip(RoundedCornerShape(GRID_CORNER))
-                    .background(cellBackground)
                     .drawBehind {
                         // DrawScope 本身就是 Density，DP 常量在这里可以直接换成像素。
                         val stroke = GRID_STROKE.toPx()
