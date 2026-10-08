@@ -26,7 +26,7 @@ class ReminderNotificationTextTest {
     fun `收起态不写教师名`() {
         // 横幅第二行会被截断，教师名放进去只会挤掉地点；想看教师名应该下拉展开。
         val text = ReminderPlanner.body("高等数学B（一）", "07:50", "09:20", "JX08-109")
-        assertFalse(text.contains("刘晓惠"))
+        assertFalse(text.contains("张明远"))
     }
 
     @Test
@@ -48,8 +48,8 @@ class ReminderNotificationTextTest {
     @Test
     fun `展开态是三行课名时间地点`() {
         assertEquals(
-            "《高等数学B（一）》\n07:50 - 09:20 · 第 4-5 节\nJX08-109 · 刘晓惠",
-            ReminderPlanner.bigText("高等数学B（一）", "07:50", "09:20", "4-5", "JX08-109", "刘晓惠"),
+            "《高等数学B（一）》\n07:50 - 09:20 · 第 4-5 节\nJX08-109 · 张明远",
+            ReminderPlanner.bigText("高等数学B（一）", "07:50", "09:20", "4-5", "JX08-109", "张明远"),
         )
     }
 

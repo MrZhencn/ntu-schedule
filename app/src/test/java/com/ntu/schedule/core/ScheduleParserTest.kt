@@ -66,7 +66,7 @@ class ScheduleParserTest {
         assertEquals(5, c.endPeriod)
         assertEquals((5..18).toList(), c.weeks)
         assertEquals("JX08-101", c.room)
-        assertEquals("刘晓惠", c.teacher)
+        assertEquals("张明远", c.teacher)
         assertEquals("啬园校区", c.campus)
         assertEquals("5-18周", c.weeksText)
         assertEquals("4-5", c.periodText)
