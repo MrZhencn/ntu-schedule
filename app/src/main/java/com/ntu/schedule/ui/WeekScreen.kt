@@ -69,7 +69,7 @@ import kotlinx.coroutines.launch
 /**
  * 左侧时间轴的宽度**下限**。
  *
- * 真实宽度由 [rememberTimeColumnWidth] 按「第12」「07:50」这两行字的实际宽度量出来。
+ * 真实宽度由 [rememberTimeColumnWidth] 按「第12」「07:50」「08:30」这几行字的实际宽度量出来。
  * 以前这里是一个写死的 40dp，只要系统字体调大、或者换一把把数字做得更宽的字体，
  * `07:50` 就在 40dp 里放不下 —— `Text` 默认会**折行**，一行变两行，
  * 54dp 高的格子里立刻挤爆，相邻几行的字叠在一起，看起来就是「时间显示不全」。
@@ -83,12 +83,12 @@ private val TIME_COL_MAX_WIDTH = 72.dp
 private val TIME_COL_SIDE_PADDING = 4.dp
 
 /**
- * 时间轴两行字的样式。
+ * 时间轴三行字的样式：节次号、**开始时刻**、**结束时刻**。
  *
  * **`lineHeight` 必须显式写。** `Text` 只传 `fontSize` 时，行高仍然从 `LocalTextStyle`
- * 继承（Material3 默认给的是 `bodyLarge`，行高 **24sp**）—— 两行字光行高就吃掉 48sp，
- * 54dp 的格子在默认字体下就已经只剩 6dp 余量，字体一放大必然溢出。
- * 这两个数是按 [UNIT_HEIGHT] 反推的：12 + 11 = 23dp，放大到 2 倍也才 46dp。
+ * 继承（Material3 默认给的是 `bodyLarge`，行高 **24sp**）—— 三行字光行高就吃掉 72sp，
+ * 54dp 的格子在默认字体下就已经爆了，字体一放大必然被裁掉一截。
+ * 这三个数是按 [UNIT_HEIGHT] 反推的：12 + 11 + 11 = 34dp，54dp 的格子里还余 20dp。
  */
 private val TIME_PERIOD_TEXT = TextStyle(
     fontSize = 10.sp,
@@ -101,7 +101,29 @@ private val TIME_CLOCK_TEXT = TextStyle(
     letterSpacing = 0.sp,
 )
 
+/**
+ * 结束时刻比开始时刻淡一档。
+ *
+ * 一格里的三行字是「标签 / 从几点 / 到几点」：`08:30` 是**上一行 `07:50` 的结尾**，
+ * 不是下面那个 `第2` 的开始。两者靠浓淡分成两组，扫一眼就不会串行。
+ */
+private const val TIME_END_ALPHA = 0.62f
+
+/** 一节课的格子在 `fontScale = 1` 时的高度。 */
 private val UNIT_HEIGHT = 54.dp
+
+/**
+ * 格子高度跟着系统字号一起放大，但**封顶**在 [UNIT_HEIGHT_MAX_FONT_SCALE] 倍。
+ *
+ * 三行字一共 34sp。高度不跟着放大的话，字号一到 `54 / 34 ≈ 1.59` 倍，
+ * 结束时刻就又被裁掉一截 —— 那正是这一版要修掉的毛病。跟着长就永远够用：
+ * `fontScale = 2`（Android 14 的最大档）时格子是 `54 × 1.6 = 86.4dp`，三行字 68dp。
+ * 代价是整张网格变高、要多滚一点，但字不会缺。
+ *
+ * 封顶是为了别让更极端的设置把 12 节拉成三屏。
+ */
+private const val UNIT_HEIGHT_MAX_FONT_SCALE = 1.6f
+
 private val DAY_HEADER_HEIGHT = 40.dp
 private val GRID_STROKE = 0.5.dp
 
@@ -442,6 +464,9 @@ private fun WeekPage(
     // 时间轴的宽度是量出来的（见 [rememberTimeColumnWidth]），表头、时间轴、`drawBehind`
     // 里的竖线必须用**同一个数**，否则线和字会错开。
     val timeColWidth = rememberTimeColumnWidth(firstPeriod, lastPeriod, month)
+    // 一格的高度跟着系统字号长（见 [rememberUnitHeight]）。同样地，横线、时间轴、
+    // 右侧格子必须用同一个数 —— 差一点点，横线就会从色块边上斜着穿过去。
+    val unitHeight = rememberUnitHeight()
 
     // 这一页**自己一张底色都不铺**：没课的格子该直接透出全局背景（见 [WeekPage]）。
     Box(
@@ -461,7 +486,7 @@ private fun WeekPage(
                         // DrawScope 本身就是 Density，DP 常量在这里可以直接换成像素。
                         val stroke = GRID_STROKE.toPx()
                         val headerPx = DAY_HEADER_HEIGHT.toPx()
-                        val unitPx = UNIT_HEIGHT.toPx()
+                        val unitPx = unitHeight.toPx()
                         val timeColPx = timeColWidth.toPx()
                         val dayWidth = (size.width - timeColPx) / 7f
                         val gridBottom = headerPx + rowCount * unitPx
@@ -510,12 +535,19 @@ private fun WeekPage(
                 DayHeaderRow(mondayIso, timeColWidth)
 
                 Row(modifier = Modifier.fillMaxWidth()) {
-                    TimeColumn(firstPeriod, lastPeriod, month, width = timeColWidth)
+                    TimeColumn(
+                        firstPeriod = firstPeriod,
+                        lastPeriod = lastPeriod,
+                        month = month,
+                        width = timeColWidth,
+                        unitHeight = unitHeight,
+                    )
                     for (day in 1..7) {
                         DayColumn(
                             slots = daySlots[day - 1],
                             month = month,
                             week = week,
+                            unitHeight = unitHeight,
                             onCourseClick = onCourseClick,
                             modifier = Modifier.weight(1f),
                         )
@@ -604,14 +636,26 @@ private fun DayHeaderRow(mondayIso: String?, timeColWidth: Dp) {
 }
 
 /**
- * 按时间轴上那两行字的**实际宽度**算这一栏要多宽。
+ * 一节（一格）的高度：基准值 [UNIT_HEIGHT] 乘上系统字号，封顶 [UNIT_HEIGHT_MAX_FONT_SCALE] 倍。
+ *
+ * 网格线、时间轴、右侧的课程格子必须**用同一个数**，否则线和字会错开，
+ * 所以这里只算一次，由 [WeekPage] 往下传。
+ */
+@Composable
+private fun rememberUnitHeight(): Dp {
+    val fontScale = LocalDensity.current.fontScale
+    return UNIT_HEIGHT * fontScale.coerceIn(1f, UNIT_HEIGHT_MAX_FONT_SCALE)
+}
+
+/**
+ * 按时间轴上那几行字的**实际宽度**算这一栏要多宽。
  *
  * 为什么不用常量：数字的宽度取决于系统字体和用户的字体大小。量出来之后再夹在
  * [TIME_COL_MIN_WIDTH] 和 [TIME_COL_MAX_WIDTH] 之间 —— 下限保证默认情况下宽度和以前
  * 一模一样（量出来比 40dp 窄也不会缩），上限保证不会把 7 天的宽度吃光。
  *
  * 上限那一夹有个已知代价：字体放到极大时文字会贴着右边被裁掉。宁可裁一点，
- * 也不能让它折行 —— 折行会把 54dp 的格子撑爆，那才是真正看不懂的样子。
+ * 也不能让它折行 —— 折行会把一格撑爆，那才是真正看不懂的样子。
  */
 @Composable
 private fun rememberTimeColumnWidth(
@@ -625,9 +669,10 @@ private fun rememberTimeColumnWidth(
         var widest = 0
         for (p in firstPeriod..lastPeriod) {
             widest = maxOf(widest, measurer.measure("第$p", TIME_PERIOD_TEXT).size.width)
-            val start = ClassTimes.slotOf(p, month)?.start
-            if (!start.isNullOrEmpty()) {
-                widest = maxOf(widest, measurer.measure(start, TIME_CLOCK_TEXT).size.width)
+            val slot = ClassTimes.slotOf(p, month)
+            if (slot != null) {
+                widest = maxOf(widest, measurer.measure(slot.start, TIME_CLOCK_TEXT).size.width)
+                widest = maxOf(widest, measurer.measure(slot.end, TIME_CLOCK_TEXT).size.width)
             }
         }
         with(density) {
@@ -646,9 +691,14 @@ private fun rememberTimeColumnWidth(
  * 这一栏自己一个绘制节点都不占。文字仍然是居中的：跨多节的连堂课合并之后，
  * 右侧的格子已经不再是「一节一行」，时间轴保持逐行居中反而最好对。
  *
- * 两行字都用 [TIME_PERIOD_TEXT]/[TIME_CLOCK_TEXT] 这套显式样式，并且 `maxLines = 1`、
- * `softWrap = false` —— **任何一个字都不许折行**，折一行这个 54dp 的格子就装不下了。
- * 宽度由 [rememberTimeColumnWidth] 量出来保证装得下，这里的两个开关只是兜底。
+ * 一行里三行字：`第N`（标签）、开始时刻、结束时刻。以前只有前两行，所以**看不出一节课
+ * 什么时候下课** —— 一个跨 3、4 节的连堂课，你得自己翻到第 4 节去猜它几点结束。
+ * 现在每一节都把自己的一段时间写全了。
+ *
+ * 三行字都用 [TIME_PERIOD_TEXT]/[TIME_CLOCK_TEXT] 这套显式样式，并且 `maxLines = 1`、
+ * `softWrap = false` —— **任何一个字都不许折行**，折一行这一格就装不下了。
+ * 宽度由 [rememberTimeColumnWidth] 量出来保证装得下、高度由 [rememberUnitHeight]
+ * 跟着系统字号长，这里的开关只是兜底。
  */
 @Composable
 private fun TimeColumn(
@@ -656,16 +706,17 @@ private fun TimeColumn(
     lastPeriod: Int,
     month: Int,
     width: Dp,
+    unitHeight: Dp,
 ) {
     Column(modifier = Modifier.width(width)) {
         for (p in firstPeriod..lastPeriod) {
-            val start = ClassTimes.slotOf(p, month)?.start.orEmpty()
+            val slot = ClassTimes.slotOf(p, month)
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(UNIT_HEIGHT),
+                    .height(unitHeight),
             ) {
                 Text(
                     "第$p",
@@ -674,11 +725,19 @@ private fun TimeColumn(
                     maxLines = 1,
                     softWrap = false,
                 )
-                if (start.isNotEmpty()) {
+                if (slot != null) {
                     Text(
-                        start,
+                        slot.start,
                         style = TIME_CLOCK_TEXT,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        softWrap = false,
+                    )
+                    Text(
+                        slot.end,
+                        style = TIME_CLOCK_TEXT,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                            .copy(alpha = TIME_END_ALPHA),
                         maxLines = 1,
                         softWrap = false,
                     )
@@ -701,6 +760,7 @@ private fun DayColumn(
     slots: List<DaySlot>,
     month: Int,
     week: Int,
+    unitHeight: Dp,
     onCourseClick: (Course, Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -711,7 +771,7 @@ private fun DayColumn(
                 is DaySlot.Empty -> Spacer(
                     Modifier
                         .fillMaxWidth()
-                        .height(UNIT_HEIGHT * slot.span),
+                        .height(unitHeight * slot.span),
                 )
 
                 is DaySlot.Filled -> BlockCell(
@@ -719,7 +779,7 @@ private fun DayColumn(
                     month = month,
                     week = week,
                     onCourseClick = onCourseClick,
-                    height = UNIT_HEIGHT * slot.span,
+                    height = unitHeight * slot.span,
                 )
             }
         }
