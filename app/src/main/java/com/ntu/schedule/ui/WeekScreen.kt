@@ -48,7 +48,10 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -63,7 +66,41 @@ import com.ntu.schedule.ui.theme.OnCourseColor
 import com.ntu.schedule.ui.theme.courseColor
 import kotlinx.coroutines.launch
 
-private val TIME_COL_WIDTH = 40.dp
+/**
+ * 左侧时间轴的宽度**下限**。
+ *
+ * 真实宽度由 [rememberTimeColumnWidth] 按「第12」「07:50」这两行字的实际宽度量出来。
+ * 以前这里是一个写死的 40dp，只要系统字体调大、或者换一把把数字做得更宽的字体，
+ * `07:50` 就在 40dp 里放不下 —— `Text` 默认会**折行**，一行变两行，
+ * 54dp 高的格子里立刻挤爆，相邻几行的字叠在一起，看起来就是「时间显示不全」。
+ */
+private val TIME_COL_MIN_WIDTH = 40.dp
+
+/** 时间轴再宽也不超过这个数，否则留给 7 天的宽度就不够用了。 */
+private val TIME_COL_MAX_WIDTH = 72.dp
+
+/** 时间轴文字左右各留一点，免得量出来的整数像素宽度正好贴边被裁。 */
+private val TIME_COL_SIDE_PADDING = 4.dp
+
+/**
+ * 时间轴两行字的样式。
+ *
+ * **`lineHeight` 必须显式写。** `Text` 只传 `fontSize` 时，行高仍然从 `LocalTextStyle`
+ * 继承（Material3 默认给的是 `bodyLarge`，行高 **24sp**）—— 两行字光行高就吃掉 48sp，
+ * 54dp 的格子在默认字体下就已经只剩 6dp 余量，字体一放大必然溢出。
+ * 这两个数是按 [UNIT_HEIGHT] 反推的：12 + 11 = 23dp，放大到 2 倍也才 46dp。
+ */
+private val TIME_PERIOD_TEXT = TextStyle(
+    fontSize = 10.sp,
+    lineHeight = 12.sp,
+    letterSpacing = 0.sp,
+)
+private val TIME_CLOCK_TEXT = TextStyle(
+    fontSize = 9.sp,
+    lineHeight = 11.sp,
+    letterSpacing = 0.sp,
+)
+
 private val UNIT_HEIGHT = 54.dp
 private val DAY_HEADER_HEIGHT = 40.dp
 private val GRID_STROKE = 0.5.dp
@@ -402,6 +439,9 @@ private fun WeekPage(
     val gridLineColor = gridColor.copy(alpha = GRID_LINE_ALPHA)
     val gutterColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = GUTTER_ALPHA)
     val rowCount = lastPeriod - firstPeriod + 1
+    // 时间轴的宽度是量出来的（见 [rememberTimeColumnWidth]），表头、时间轴、`drawBehind`
+    // 里的竖线必须用**同一个数**，否则线和字会错开。
+    val timeColWidth = rememberTimeColumnWidth(firstPeriod, lastPeriod, month)
 
     // 这一页**自己一张底色都不铺**：没课的格子该直接透出全局背景（见 [WeekPage]）。
     Box(
@@ -422,7 +462,7 @@ private fun WeekPage(
                         val stroke = GRID_STROKE.toPx()
                         val headerPx = DAY_HEADER_HEIGHT.toPx()
                         val unitPx = UNIT_HEIGHT.toPx()
-                        val timeColPx = TIME_COL_WIDTH.toPx()
+                        val timeColPx = timeColWidth.toPx()
                         val dayWidth = (size.width - timeColPx) / 7f
                         val gridBottom = headerPx + rowCount * unitPx
 
@@ -467,10 +507,10 @@ private fun WeekPage(
                         )
                     },
             ) {
-                DayHeaderRow(mondayIso)
+                DayHeaderRow(mondayIso, timeColWidth)
 
                 Row(modifier = Modifier.fillMaxWidth()) {
-                    TimeColumn(firstPeriod, lastPeriod, month)
+                    TimeColumn(firstPeriod, lastPeriod, month, width = timeColWidth)
                     for (day in 1..7) {
                         DayColumn(
                             slots = daySlots[day - 1],
@@ -489,7 +529,7 @@ private fun WeekPage(
                     "这一周没有课",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = GRID_MARGIN + TIME_COL_WIDTH + 12.dp, top = 12.dp),
+                    modifier = Modifier.padding(start = GRID_MARGIN + timeColWidth + 12.dp, top = 12.dp),
                 )
             }
             Spacer(Modifier.height(20.dp))
@@ -528,14 +568,14 @@ private fun mergeEmptyRuns(blocks: List<CourseBlock>): List<DaySlot> {
 }
 
 @Composable
-private fun DayHeaderRow(mondayIso: String?) {
+private fun DayHeaderRow(mondayIso: String?, timeColWidth: Dp) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .height(DAY_HEADER_HEIGHT),
     ) {
         // 时间轴上方是留白：网格线由整个网格统一画，这里不再自己画边。
-        Spacer(Modifier.width(TIME_COL_WIDTH).height(DAY_HEADER_HEIGHT))
+        Spacer(Modifier.width(timeColWidth).height(DAY_HEADER_HEIGHT))
         for (day in 1..7) {
             val dateIso = mondayIso?.let { DateUtil.plusDays(it, day - 1) }
             Column(
@@ -564,19 +604,60 @@ private fun DayHeaderRow(mondayIso: String?) {
 }
 
 /**
+ * 按时间轴上那两行字的**实际宽度**算这一栏要多宽。
+ *
+ * 为什么不用常量：数字的宽度取决于系统字体和用户的字体大小。量出来之后再夹在
+ * [TIME_COL_MIN_WIDTH] 和 [TIME_COL_MAX_WIDTH] 之间 —— 下限保证默认情况下宽度和以前
+ * 一模一样（量出来比 40dp 窄也不会缩），上限保证不会把 7 天的宽度吃光。
+ *
+ * 上限那一夹有个已知代价：字体放到极大时文字会贴着右边被裁掉。宁可裁一点，
+ * 也不能让它折行 —— 折行会把 54dp 的格子撑爆，那才是真正看不懂的样子。
+ */
+@Composable
+private fun rememberTimeColumnWidth(
+    firstPeriod: Int,
+    lastPeriod: Int,
+    month: Int,
+): Dp {
+    val measurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    return remember(measurer, density, firstPeriod, lastPeriod, month) {
+        var widest = 0
+        for (p in firstPeriod..lastPeriod) {
+            widest = maxOf(widest, measurer.measure("第$p", TIME_PERIOD_TEXT).size.width)
+            val start = ClassTimes.slotOf(p, month)?.start
+            if (!start.isNullOrEmpty()) {
+                widest = maxOf(widest, measurer.measure(start, TIME_CLOCK_TEXT).size.width)
+            }
+        }
+        with(density) {
+            (widest.toDp() + TIME_COL_SIDE_PADDING * 2).coerceIn(
+                TIME_COL_MIN_WIDTH,
+                TIME_COL_MAX_WIDTH,
+            )
+        }
+    }
+}
+
+/**
  * 左侧时间轴：**按节次逐行**，每行只占一个单位高度，因此和右侧合并格子的边界天然对齐。
  *
  * 底色和「节次横线不穿过这里」都是在 [WeekPage] 的 `drawBehind` 里画的（见 [GUTTER_ALPHA]），
  * 这一栏自己一个绘制节点都不占。文字仍然是居中的：跨多节的连堂课合并之后，
  * 右侧的格子已经不再是「一节一行」，时间轴保持逐行居中反而最好对。
+ *
+ * 两行字都用 [TIME_PERIOD_TEXT]/[TIME_CLOCK_TEXT] 这套显式样式，并且 `maxLines = 1`、
+ * `softWrap = false` —— **任何一个字都不许折行**，折一行这个 54dp 的格子就装不下了。
+ * 宽度由 [rememberTimeColumnWidth] 量出来保证装得下，这里的两个开关只是兜底。
  */
 @Composable
 private fun TimeColumn(
     firstPeriod: Int,
     lastPeriod: Int,
     month: Int,
+    width: Dp,
 ) {
-    Column(modifier = Modifier.width(TIME_COL_WIDTH)) {
+    Column(modifier = Modifier.width(width)) {
         for (p in firstPeriod..lastPeriod) {
             val start = ClassTimes.slotOf(p, month)?.start.orEmpty()
             Column(
@@ -588,14 +669,18 @@ private fun TimeColumn(
             ) {
                 Text(
                     "第$p",
-                    fontSize = 10.sp,
+                    style = TIME_PERIOD_TEXT,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    softWrap = false,
                 )
                 if (start.isNotEmpty()) {
                     Text(
                         start,
-                        fontSize = 9.sp,
+                        style = TIME_CLOCK_TEXT,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        softWrap = false,
                     )
                 }
             }
