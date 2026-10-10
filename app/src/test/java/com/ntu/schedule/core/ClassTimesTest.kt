@@ -1,5 +1,6 @@
 package com.ntu.schedule.core
 
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -13,8 +14,17 @@ import org.junit.Test
  * 9 月的第 6 节 14:00 开始，10 月的第 6 节 13:30 开始。任何「按开学月份选一整套表」
  * 的实现都会在 10 月以后把第 6–12 节全部算错 30 分钟，而且错得很隐蔽
  * （时间看起来仍然合理，只是提前了半小时）。
+ *
+ * [ClassTimes.seasonMode] 是**进程级全局**（界面、AlarmManager 提醒、桌面小组件
+ * 三个入口分别读它，逐个传参会漏）。所以每个用例跑完都必须还原成自动档，
+ * 否则一个用例改了档位，后面所有用例的预期值全错，而且报错信息会指向无辜的用例。
  */
 class ClassTimesTest {
+
+    @After
+    fun restoreAutoSeason() {
+        ClassTimes.seasonMode = SeasonMode.AUTO
+    }
 
     @Test
     fun `两套时间表都是12节`() {
@@ -127,5 +137,71 @@ class ClassTimesTest {
     private fun minute(hhmm: String): Int {
         val (h, m) = hhmm.split(":")
         return h.toInt() * 60 + m.toInt()
+    }
+
+    // ------------------------------------------------------------ 手动档
+
+    @Test
+    fun `默认是自动档`() {
+        assertEquals(SeasonMode.AUTO, ClassTimes.seasonMode)
+    }
+
+    @Test
+    fun `固定冬季档之后不看月份`() {
+        ClassTimes.seasonMode = SeasonMode.WINTER
+        // 9 月本来是夏令（14:00 开始），固定冬令之后回到 13:30
+        assertEquals("13:30", ClassTimes.slotOf(6, 9)?.start)
+        assertEquals("14:10", ClassTimes.slotOf(6, 9)?.end)
+        assertFalse(ClassTimes.isSummer(7))
+        assertEquals(ClassTimes.WINTER, ClassTimes.tableForMonth(7))
+    }
+
+    @Test
+    fun `固定夏季档之后不看月份`() {
+        ClassTimes.seasonMode = SeasonMode.SUMMER
+        // 12 月本来是冬令（13:30 开始），固定夏令之后变成 14:00
+        assertEquals("14:00", ClassTimes.slotOf(6, 12)?.start)
+        assertEquals("14:40", ClassTimes.slotOf(6, 12)?.end)
+        assertTrue(ClassTimes.isSummer(1))
+        assertEquals(ClassTimes.SUMMER, ClassTimes.tableForMonth(1))
+    }
+
+    @Test
+    fun `手动档不影响第1到5节`() {
+        // 上午两套表本来就相同。所以「切了档位上午没变」是对的，不是没生效 ——
+        // 界面上要拿第 6 节举例，拿第 1 节举例会被当成点了没反应。
+        for (mode in SeasonMode.values()) {
+            for (p in 1..5) {
+                assertEquals(
+                    "第 $p 节的开始时间不该随作息档位变",
+                    ClassTimes.WINTER[p - 1].start,
+                    ClassTimes.tableFor(9, mode)[p - 1].start,
+                )
+                assertEquals(
+                    "第 $p 节的结束时间不该随作息档位变",
+                    ClassTimes.WINTER[p - 1].end,
+                    ClassTimes.tableFor(9, mode)[p - 1].end,
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `tableFor是纯函数不看全局档位`() {
+        // 界面上要用「当前档位」预览时间，就不能被全局档位污染，
+        // 否则「按月份自动切换」那一档的预览会显示成手动档的时间。
+        ClassTimes.seasonMode = SeasonMode.SUMMER
+        assertEquals(ClassTimes.WINTER, ClassTimes.tableFor(7, SeasonMode.WINTER))
+        assertEquals(ClassTimes.SUMMER, ClassTimes.tableFor(1, SeasonMode.SUMMER))
+        assertEquals(ClassTimes.WINTER, ClassTimes.tableFor(1, SeasonMode.AUTO))
+        assertEquals(ClassTimes.SUMMER, ClassTimes.tableFor(7, SeasonMode.AUTO))
+    }
+
+    @Test
+    fun `手动档也一样会拒绝越界节次`() {
+        for (mode in SeasonMode.values()) {
+            assertNull(ClassTimes.tableFor(10, mode).getOrNull(12))
+            assertNull(ClassTimes.tableFor(10, mode).getOrNull(-1))
+        }
     }
 }

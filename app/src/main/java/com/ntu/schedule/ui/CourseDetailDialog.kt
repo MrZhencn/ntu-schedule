@@ -25,12 +25,17 @@ import com.ntu.schedule.core.Course
  *
  * @param month 用哪个月份的作息表算上课时间 —— 由「这一周属于几月」决定，
  *   而不是「今天几月」，否则翻到 10 月的周次会用夏令时间（差 30 分钟）。
+ * @param onEdit 非 null 时显示「修改」按钮。只有自己加的课（[Course.isCustom]）才给 ——
+ *   教务导入的课改了也没用，下次刷新就被覆盖回去，不如不给这个按钮。
+ * @param onDelete 同上，显示「删除」按钮。
  */
 @Composable
 fun CourseDetailDialog(
     course: Course,
     month: Int,
     onDismiss: () -> Unit,
+    onEdit: (() -> Unit)? = null,
+    onDelete: (() -> Unit)? = null,
 ) {
     val start = ClassTimes.slotOf(course.startPeriod, month)
     val end = ClassTimes.slotOf(course.endPeriod, month)
@@ -55,6 +60,10 @@ fun CourseDetailDialog(
                 DetailRow("地点", course.room.ifBlank { "未排地点" })
                 if (course.teacher.isNotBlank()) DetailRow("教师", course.teacher)
                 DetailRow("周次", course.weeksText)
+                if (course.isCustom) {
+                    // 说明白它的来历：不然用户会奇怪「这门课教务系统里根本没有，哪来的」
+                    DetailRow("来源", "自己加的（重新导入课表不会丢）")
+                }
                 if (course.weekMarker.isNotBlank()) {
                     DetailRow("备注", "带「${course.weekMarker}」的周次在上课地点上有所不同")
                 }
@@ -66,6 +75,21 @@ fun CourseDetailDialog(
         },
         confirmButton = {
             TextButton(onClick = onDismiss) { Text("知道了") }
+        },
+        dismissButton = when {
+            onEdit == null && onDelete == null -> null
+            else -> {
+                {
+                    if (onDelete != null) {
+                        TextButton(onClick = onDelete) {
+                            Text("删除", color = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                    if (onEdit != null) {
+                        TextButton(onClick = onEdit) { Text("修改") }
+                    }
+                }
+            }
         },
     )
 }

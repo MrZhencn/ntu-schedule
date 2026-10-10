@@ -31,7 +31,17 @@ data class Course(
     val campus: String = "",
     /** 周次后附带的标记符（■◆▲），表示该段周次另有地点安排。 */
     val weekMarker: String = "",
+    /**
+     * 只对**用户自己加的课**有值（见 [isCustom]）；教务导入的课永远是空串。
+     *
+     * 用它而不是「课名 + 地点」来定位一条自定义课，是因为编辑时课名/地点/时间都
+     * 可能被改掉 —— 按内容去找就找不到原来那条了，用户会看到「改完变成了两门课」。
+     */
+    val customId: String = "",
 ) {
+    /** 是不是用户手动加的课（不是从教务导入的）。 */
+    val isCustom: Boolean get() = customId.isNotEmpty()
+
     /** 覆盖的节次区间，用于网格布局。 */
     val periodRange: IntRange get() = startPeriod..endPeriod
 

@@ -1,6 +1,7 @@
 package com.ntu.schedule.data
 
 import android.content.Context
+import com.ntu.schedule.core.Course
 import com.ntu.schedule.core.Schedule
 import com.ntu.schedule.core.ScheduleParser
 import java.io.File
@@ -13,6 +14,7 @@ import java.io.File
  *
  * 目录：`<app files>/` 下
  * - `schedule.json`  课表本体（schema 由 [ScheduleParser.SCHEMA_VERSION] 管）
+ * - `custom_courses.json` 用户自己加的课（临时调课/加课），**独立文件**
  * - `session.json`   教务会话 cookie + 学号，用于「刷新」而不必重新输密码
  * - `account.json`   上次使用的学号，用来预填登录框
  * - `credentials.json` 用户勾选「记住密码」时才存在；密码字段是 [SecretStore] 用
@@ -23,23 +25,66 @@ class ScheduleStore(private val context: Context) {
     private val dir: File get() = context.filesDir
 
     private val scheduleFile: File get() = File(dir, "schedule.json")
+    private val customFile: File get() = File(dir, "custom_courses.json")
     private val sessionFile: File get() = File(dir, "session.json")
     private val accountFile: File get() = File(dir, "account.json")
     private val credentialsFile: File get() = File(dir, "credentials.json")
 
     // ---------------------------------------------------------------- 课表
 
+    /**
+     * 读课表，**并把用户自己加的课并进来**。
+     *
+     * 合并放在这里而不是各个界面里，是因为课表有四个互不相干的消费者 —— 界面、
+     * 上课提醒（[com.ntu.schedule.notify.ReminderScheduler]）、桌面小组件
+     * （[com.ntu.schedule.widget.WidgetRenderer]）、自检面板
+     * （[com.ntu.schedule.diagnostics.SelfCheck]）—— 它们**都只经过这一个入口**。
+     * 在别处合并的话，漏掉谁就是谁看不到自定义课，而且症状很隐蔽：最常见的是
+     * 「课表里明明有这门课，提醒就是不响」。
+     */
     fun loadSchedule(): Schedule? {
         val f = scheduleFile
         if (!f.exists()) return null
-        return runCatching { ScheduleParser.fromJson(f.readText()) }.getOrNull()
+        val base = runCatching { ScheduleParser.fromJson(f.readText()) }.getOrNull() ?: return null
+        val custom = loadCustomCourses()
+        return if (custom.isEmpty()) base else base.copy(courses = base.courses + custom)
     }
 
+    /**
+     * 写课表。
+     *
+     * **自定义课不写进这个文件**：它们属于 [customFile]。这里再挡一道，万一将来有调用方
+     * 把 [loadSchedule] 拿到的合并结果原样传回来，也不会把同一门课存成两份
+     * （存成两份之后删一次删不干净）。
+     */
     fun saveSchedule(schedule: Schedule) {
-        writeAtomically(scheduleFile, ScheduleParser.toJson(schedule))
+        val stripped = schedule.copy(courses = schedule.courses.filter { !it.isCustom })
+        writeAtomically(scheduleFile, ScheduleParser.toJson(stripped))
     }
 
     fun hasSchedule(): Boolean = scheduleFile.exists()
+
+    // ------------------------------------------------------- 用户自己加的课
+
+    /**
+     * 读自定义课。文件不存在（绝大多数人没加过课）返回空列表。
+     *
+     * 写坏一条不影响其它条：解析时逐条来，坏的丢掉。
+     */
+    fun loadCustomCourses(): List<Course> {
+        val f = customFile
+        if (!f.exists()) return emptyList()
+        return runCatching { ScheduleParser.customCoursesFromJson(f.readText()) }
+            .getOrDefault(emptyList())
+    }
+
+    /**
+     * 整表写回（不是增量）。自定义课总量很小（个位数），
+     * 且编辑/删除都需要「按 id 替换」这种整表操作，分开的增删接口反而容易写错。
+     */
+    fun saveCustomCourses(courses: List<Course>) {
+        writeAtomically(customFile, ScheduleParser.customCoursesToJson(courses))
+    }
 
     // -------------------------------------------------------------- 会话票据
 
@@ -139,6 +184,7 @@ class ScheduleStore(private val context: Context) {
     /** 清空全部本地数据（设置页的「清除数据」）。 */
     fun clearAll() {
         runCatching { scheduleFile.delete() }
+        runCatching { customFile.delete() }
         runCatching { sessionFile.delete() }
         runCatching { accountFile.delete() }
         runCatching { credentialsFile.delete() }

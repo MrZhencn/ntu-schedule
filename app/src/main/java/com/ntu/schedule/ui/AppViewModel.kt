@@ -8,14 +8,18 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.ntu.schedule.core.Appearance
 import com.ntu.schedule.core.BackgroundMode
+import com.ntu.schedule.core.ClassTimes
+import com.ntu.schedule.core.Course
 import com.ntu.schedule.core.DateUtil
 import com.ntu.schedule.core.ImageCrop
 import com.ntu.schedule.core.ReminderPlanner
 import com.ntu.schedule.core.ReminderSettings
 import com.ntu.schedule.core.Schedule
+import com.ntu.schedule.core.SeasonMode
 import com.ntu.schedule.data.AppearanceStore
 import com.ntu.schedule.data.ReminderStore
 import com.ntu.schedule.data.ScheduleRepository
+import com.ntu.schedule.data.SeasonStore
 import com.ntu.schedule.diagnostics.Breadcrumbs
 import com.ntu.schedule.notify.NotificationChannels
 import com.ntu.schedule.notify.ReminderNotification
@@ -25,6 +29,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.util.UUID
 
 /**
  * 正在等用户「选显示区域」的那张图。
@@ -96,6 +101,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val _reminderLead = MutableStateFlow(ReminderSettings.DEFAULT.leadMinutes)
     val reminderLead: StateFlow<Int> = _reminderLead.asStateFlow()
 
+    private val seasonStore = SeasonStore(app)
+
+    /**
+     * 当前作息档位（冬令时 / 夏令时 / 按月份自动切）。
+     *
+     * 权威副本在 [ClassTimes.seasonMode] —— 这个只是给界面看的镜像。两处都留着，是因为
+     * 桌面小组件和闹钟触发时不会创建 ViewModel，它们只能读 [ClassTimes]；
+     * 而 Compose 要重组又必须有个 StateFlow。
+     */
+    private val _seasonMode = MutableStateFlow(SeasonMode.AUTO)
+    val seasonMode: StateFlow<SeasonMode> = _seasonMode.asStateFlow()
+
     /**
      * 选好图片之后、定下显示区域之前的那张图。非 null 时界面弹裁切框。
      *
@@ -106,6 +123,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val pendingImage: StateFlow<PendingImage?> = _pendingImage.asStateFlow()
 
     init {
+        // 作息档位必须**最先**装好：下面 ReminderScheduler.refresh 会按它算提醒时间，
+        // 装晚了这一轮就按自动档排出去，第 6–12 节会差 30 分钟。
+        applySeasonMode(repo.loadSeasonMode())
         _schedule.value = repo.loadLocal()
         _canRememberPassword.value = repo.canRememberPassword()
         prefillLogin()
@@ -294,6 +314,86 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** 今天对应的教学周次（不在学期内返回 null）。供界面与小组件共用。 */
     fun currentWeek(): Int? = _schedule.value?.weekOfDate(DateUtil.todayIso())
+
+    // -------------------------------------------------------- 用户自己加的课
+
+    /**
+     * 新增或修改一门自己加的课（临时调课、临时加课）。
+     *
+     * 新建时 [Course.customId] 是空的，id 在这里分配 —— 界面只管填内容，不用操心
+     * 「怎么给一条课算个唯一标识」。已有 id 的按 **id** 替换，不按内容匹配：
+     * 用户很可能正是在改课名或者时间，按内容去找就找不到原来那条了，
+     * 结果是「改完变成两门课」。
+     */
+    fun saveCustomCourse(course: Course) {
+        val current = repo.customCourses()
+        val existing = course.customId.isNotEmpty() && current.any { it.customId == course.customId }
+        val next = if (existing) {
+            current.map { if (it.customId == course.customId) course else it }
+        } else {
+            current + course.copy(customId = UUID.randomUUID().toString())
+        }
+        repo.saveCustomCourses(next)
+        afterCustomChange(if (existing) "已改好" else "已加进课表")
+    }
+
+    /** 删掉一门自己加的课。传进来的只要 [Course.customId] 对得上就够。 */
+    fun deleteCustomCourse(course: Course) {
+        val current = repo.customCourses()
+        val next = current.filterNot { it.customId == course.customId }
+        if (next.size == current.size) return
+        repo.saveCustomCourses(next)
+        afterCustomChange("已删除这门课")
+    }
+
+    /**
+     * 自定义课改动之后的统一收尾。三件事**一件都不能少**：
+     * 1. 重读课表 —— [com.ntu.schedule.data.ScheduleStore.loadSchedule] 会把自定义课并进来，
+     *    只有重读界面才会变；
+     * 2. 刷桌面小组件；
+     * 3. 重排上课提醒。
+     *
+     * 少做哪一件，症状都是「课表里改了，但提醒/小组件还是老样子」——
+     * 而且不会报错，只会安静地不对。
+     */
+    private fun afterCustomChange(message: String) {
+        _schedule.value = repo.loadLocal()
+        WidgetRenderer.updateAll(appContext)
+        ReminderScheduler.refresh(appContext)
+        _message.value = message
+    }
+
+    // -------------------------------------------------------------- 作息档位
+
+    /**
+     * 手动指定冬令时 / 夏令时。
+     *
+     * [SeasonMode.AUTO] 是学校规定的按月份自动切；两个手动档用来对付**临时调整**
+     * （比如学校通知 10 月继续按夏令时上课）。
+     *
+     * 改完必须重排提醒：第 6–12 节两套表差 30 分钟，已经排出去的闹钟全是按旧表算的，
+     * 不重排就会在错误的时间响 —— 而用户刚为此改过设置，看到只会更困惑。
+     */
+    fun setSeasonMode(mode: SeasonMode) {
+        if (mode == _seasonMode.value) return
+        repo.saveSeasonMode(mode)
+        applySeasonMode(mode)
+        Breadcrumbs.add("season", "作息档位改成 ${mode.name}")
+        ReminderScheduler.refresh(appContext)
+        WidgetRenderer.updateAll(appContext)
+        _message.value = seasonModeLabel(mode)
+    }
+
+    /**
+     * 把档位装进 [ClassTimes]（界面 / 提醒 / 小组件都读它），并同步给界面。
+     *
+     * 装的是**全局**状态：桌面小组件和闹钟触发时根本不会创建 ViewModel，
+     * 它们只能直接从 [ClassTimes] 读。
+     */
+    private fun applySeasonMode(mode: SeasonMode) {
+        ClassTimes.seasonMode = mode
+        _seasonMode.value = mode
+    }
 
     // ------------------------------------------------------------------ 外观
 

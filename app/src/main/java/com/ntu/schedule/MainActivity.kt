@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Wallpaper
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material3.AlertDialog
@@ -60,23 +61,28 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ntu.schedule.core.Appearance
+import com.ntu.schedule.core.Course
 import com.ntu.schedule.core.DateUtil
+import com.ntu.schedule.core.SeasonMode
 import com.ntu.schedule.diagnostics.Breadcrumbs
 import com.ntu.schedule.ui.AUTHOR_FREE_NOTICE
 import com.ntu.schedule.ui.AUTHOR_RIGHTS
 import com.ntu.schedule.ui.AppBackground
 import com.ntu.schedule.ui.AppViewModel
 import com.ntu.schedule.ui.BackgroundSettingsDialog
+import com.ntu.schedule.ui.CustomCourseDialog
 import com.ntu.schedule.ui.DiagnosticsDialog
 import com.ntu.schedule.ui.ImportDialog
 import com.ntu.schedule.ui.ImageCropDialog
 import com.ntu.schedule.ui.LocalAppearance
 import com.ntu.schedule.ui.LoginScreen
 import com.ntu.schedule.ui.ReminderSettingsDialog
+import com.ntu.schedule.ui.SeasonDialog
 import com.ntu.schedule.ui.TodayScreen
 import com.ntu.schedule.ui.WeekScreen
 import com.ntu.schedule.ui.WidgetHelpDialog
 import com.ntu.schedule.ui.panelColor
+import com.ntu.schedule.ui.seasonModeLabel
 import com.ntu.schedule.ui.theme.NtuScheduleTheme
 import com.ntu.schedule.widget.WidgetPinner
 import kotlinx.coroutines.delay
@@ -137,12 +143,20 @@ private fun AppRootBody(vm: AppViewModel, appearance: Appearance) {
     val askNotification by vm.askNotificationPermission.collectAsStateWithLifecycle()
     val reminderLead by vm.reminderLead.collectAsStateWithLifecycle()
     val pendingImage by vm.pendingImage.collectAsStateWithLifecycle()
+    val seasonMode by vm.seasonMode.collectAsStateWithLifecycle()
 
     var tab by remember { mutableStateOf(Tab.Today) }
     var showImport by remember { mutableStateOf(false) }
     var showAbout by remember { mutableStateOf(false) }
     var showClearConfirm by remember { mutableStateOf(false) }
     var showBackground by remember { mutableStateOf(false) }
+    // 作息档位。用户可以在这里把「按月份自动切」改成固定冬令/夏令，
+    // 学校临时调作息时不用等 App 更新。
+    var showSeason by remember { mutableStateOf(false) }
+    // 自己加一节课：null = 没开；开了就是「编辑哪一门课」（新建时是空的 Course?）
+    var showCustom by remember { mutableStateOf(false) }
+    var editingCustom by remember { mutableStateOf<Course?>(null) }
+    var pendingDeleteCustom by remember { mutableStateOf<Course?>(null) }
     // 提醒自检面板要保持打开：用户点「去设置」跳走、改完返回，面板还在原地自动刷新。
     // 所以用 rememberSaveable —— 跳系统设置期间 Activity 被回收也不会把它弄丢。
     var showReminderInfo by rememberSaveable { mutableStateOf(false) }
@@ -295,6 +309,13 @@ private fun AppRootBody(vm: AppViewModel, appearance: Appearance) {
                                 leadingIcon = { Icon(Icons.Filled.Wallpaper, contentDescription = null) },
                                 onClick = { menuOpen = false; showBackground = true },
                             )
+                            DropdownMenuItem(
+                                // 把当前档位写进标题：不然「自动」和「一直是夏令」在界面上
+                                // 长得一模一样，用户点进去才知道自己现在在哪一档。
+                                text = { Text("作息时间（${seasonModeLabel(seasonMode)}）") },
+                                leadingIcon = { Icon(Icons.Filled.Schedule, contentDescription = null) },
+                                onClick = { menuOpen = false; showSeason = true },
+                            )
                             if (hasCredentials) {
                                 DropdownMenuItem(
                                     text = { Text("忘记保存的密码") },
@@ -355,7 +376,19 @@ private fun AppRootBody(vm: AppViewModel, appearance: Appearance) {
                 contentPadding = inner,
                 onOpenWeek = { tab = Tab.Week },
             )
-            else -> WeekScreen(schedule = current, contentPadding = inner)
+            else -> WeekScreen(
+                schedule = current,
+                contentPadding = inner,
+                onAddCustom = {
+                    editingCustom = null
+                    showCustom = true
+                },
+                onEditCustom = { course ->
+                    editingCustom = course
+                    showCustom = true
+                },
+                onDeleteCustom = { course -> pendingDeleteCustom = course },
+            )
         }
     }
 
@@ -418,6 +451,56 @@ private fun AppRootBody(vm: AppViewModel, appearance: Appearance) {
             onGradient = { start, end -> vm.setBackgroundGradient(start, end) },
             onDim = { vm.setBackgroundDim(it) },
             onReset = { vm.clearBackground() },
+        )
+    }
+
+    if (showSeason) {
+        SeasonDialog(
+            current = seasonMode,
+            month = DateUtil.monthOf(DateUtil.todayIso()),
+            onPick = { vm.setSeasonMode(it) },
+            onDismiss = { showSeason = false },
+        )
+    }
+
+    if (showCustom) {
+        val editing = editingCustom
+        // 时间预览用「这门课第一个上课周所在的月份」：翻到 12 月的周次加课，
+        // 却按 9 月的夏令时间给他看，第 6 节会差 30 分钟。新建的课还没周次，就用这个月。
+        val customMonth = editing?.weeks?.firstOrNull()
+            ?.let { w -> schedule?.mondayOfWeek(w)?.let { DateUtil.monthOf(it) } }
+            ?: DateUtil.monthOf(DateUtil.todayIso())
+        CustomCourseDialog(
+            initial = editing,
+            totalWeeks = schedule?.totalWeeks?.coerceAtLeast(1) ?: 1,
+            month = customMonth,
+            onSave = { course ->
+                showCustom = false
+                editingCustom = null
+                vm.saveCustomCourse(course)
+            },
+            onDismiss = {
+                showCustom = false
+                editingCustom = null
+            },
+        )
+    }
+
+    // 删之前问一句：自己加的课重新录一遍要手选星期、节次、周次，误触代价不小。
+    pendingDeleteCustom?.let { course ->
+        AlertDialog(
+            onDismissRequest = { pendingDeleteCustom = null },
+            title = { Text("删除「${course.name}」？") },
+            text = { Text("这是你自己加的课，删掉之后课表和上课提醒里都不会再出现。教务导入的课不受影响。") },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingDeleteCustom = null
+                    vm.deleteCustomCourse(course)
+                }) { Text("删除", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeleteCustom = null }) { Text("取消") }
+            },
         )
     }
 
@@ -498,6 +581,9 @@ private const val ABOUT_TEXT =
         "加密，密钥不会离开设备的安全存储；本机若不支持加密，则不会保存，也不会退化成明文。\n" +
         "• 登录一律由你手动触发。教务系统连续 5 次密码错误会锁定账号，所以本 App 从不自动重试密码。\n" +
         "• 上课提醒每节课提前 1 小时，只提前排未来 7 天，打开 App 时自动续排。\n" +
-        "• 作息时间按日历月份区分：5-9 月为夏季作息，10-4 月为冬季作息。\n" +
+        "• 作息时间默认按日历月份区分：5-9 月为夏季作息，10-4 月为冬季作息。" +
+        "学校临时调整时，可以在「作息时间」里固定成冬令或夏令，第 1-5 节两季相同，受影响的只有第 6-12 节。\n" +
+        "• 周课表右上角的「+」可以自己加课（临时调课、补课），可以只加某几周，也可以加满整个学期；" +
+        "自己加的课在格子上有一道深色描边，点开能改能删，重新导入课表也不会被冲掉。\n" +
         "• 本 App 与南通大学官方无关。\n\n" +
         "作息与课表若有出入，请以教务系统为准。"

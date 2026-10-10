@@ -2,6 +2,7 @@ package com.ntu.schedule.ui
 
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -24,11 +25,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Today
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -145,6 +148,19 @@ private val COURSE_INSET_H = 1.5.dp
 private val COURSE_INSET_V = 1.dp
 
 /**
+ * 自己加的课额外描一道边。
+ *
+ * 加课和正式课**必须一眼能分开**：长一样的话，用户看到一节没印象的课会以为导错了，
+ * 而实际上是他自己加的；反过来准备删的时候也不敢确认删的是哪一条。
+ *
+ * 用边框而不是换颜色或加角标：配色是按课名稳定分配的（见 [courseColor]），
+ * 换颜色会破坏「同一门课永远同色」；角标在只有 46dp 宽的格子里会挤掉课名。
+ * 边框不占任何布局空间，也不影响点按。
+ */
+private val CUSTOM_BORDER_WIDTH = 1.5.dp
+private const val CUSTOM_BORDER_ALPHA = 0.55f
+
+/**
  * 整张网格本身就是一张卡片：四周留边、圆角、一条 0.5dp 的外框。
  *
  * 留边是为了让网格从「铺满整屏的白」变成「浮在页面上的一张表」。**卡片自己不铺底色**
@@ -185,12 +201,19 @@ private const val GRID_LINE_ALPHA = 0.6f
  *    视线停在第 6-7 节那一带，第 7 周也停在那里，不会跳回最上面。
  *
  * 格子用 [CourseBlocks] 划分：连着的课（4-5 节）是**一个**格子，不是两个带缝的小格。
- * 点格子弹出 [CourseDetailDialog]。
+ * 点格子弹出 [CourseDetailDialog]；自己加的课在那里面能改、能删。
+ *
+ * @param onEditCustom 点了「修改」时调用，只有自己加的课会走到（[Course.isCustom]）
+ * @param onDeleteCustom 点了「删除」时调用，同样只对自己加的课
+ * @param onAddCustom 右上角「+」：自己加一节课
  */
 @Composable
 fun WeekScreen(
     schedule: Schedule,
     contentPadding: PaddingValues,
+    onEditCustom: (Course) -> Unit = {},
+    onDeleteCustom: (Course) -> Unit = {},
+    onAddCustom: () -> Unit = {},
 ) {
     val totalWeeks = schedule.totalWeeks.coerceAtLeast(1)
     val todayIso = DateUtil.todayIso()
@@ -242,6 +265,7 @@ fun WeekScreen(
                 showJump = true
             },
             onBackToCurrent = { currentWeek?.let { goToWeek(it) } },
+            onAddCustom = onAddCustom,
         )
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         HorizontalPager(
@@ -282,7 +306,29 @@ fun WeekScreen(
     detail?.let { course ->
         val month = schedule.mondayOfWeek(detailWeek)?.let { DateUtil.monthOf(it) }
             ?: DateUtil.monthOf(todayIso)
-        CourseDetailDialog(course = course, month = month, onDismiss = { detail = null })
+        CourseDetailDialog(
+            course = course,
+            month = month,
+            onDismiss = { detail = null },
+            // 先关掉详情再回调：不然「修改」之后详情还浮在上面显示旧内容，
+            // 而且编辑框和详情框会叠两层。
+            onEdit = if (course.isCustom) {
+                {
+                    detail = null
+                    onEditCustom(course)
+                }
+            } else {
+                null
+            },
+            onDelete = if (course.isCustom) {
+                {
+                    detail = null
+                    onDeleteCustom(course)
+                }
+            } else {
+                null
+            },
+        )
     }
 }
 
@@ -294,6 +340,7 @@ private fun WeekToolbar(
     currentWeek: Int?,
     onJump: () -> Unit,
     onBackToCurrent: () -> Unit,
+    onAddCustom: () -> Unit,
 ) {
     // 页号只在这里读：翻页时重组范围被限制在工具栏，pager 的页面内容不动。
     val visibleWeek = (pagerState.currentPage + 1).coerceIn(1, totalWeeks)
@@ -342,6 +389,15 @@ private fun WeekToolbar(
                 Spacer(Modifier.width(4.dp))
                 Text("本周")
             }
+        }
+        // 临时调课/加课：手动选好星期、节次、周次就能塞进表里。放在这一行的最右边，
+        // 就是「周课表右上角」。
+        IconButton(onClick = onAddCustom) {
+            Icon(
+                Icons.Filled.Add,
+                contentDescription = "自己加一节课",
+                modifier = Modifier.size(22.dp),
+            )
         }
     }
 }
@@ -823,6 +879,7 @@ private fun CourseCellContent(
 ) {
     val startText = ClassTimes.slotOf(course.startPeriod, month)?.start.orEmpty()
     val endText = ClassTimes.slotOf(course.endPeriod, month)?.end.orEmpty()
+    val shape = RoundedCornerShape(COURSE_CORNER)
     Column(
         modifier = modifier
             // 先内缩，再画圆角色块（见 COURSE_CORNER 的说明）。
@@ -830,10 +887,19 @@ private fun CourseCellContent(
             // 顺序要紧：`clip` 必须在 `background` 和 `clickable` **之前**。
             // 色块本身用 RoundedCornerShape 也能画出圆角，但那样只圆了背景，
             // 点下去的水波纹仍是方形的 —— 会从四个角溢出色块外面。
-            .clip(RoundedCornerShape(COURSE_CORNER))
+            .clip(shape)
             // 周课表里唯一保留的「突出」：每门课按课程名稳定分配一种底色，
             // 同一门课每周、每次打开都是同一个颜色，方便一眼扫到。
             .background(courseColor(course.colorIndex))
+            // 自己加的课描一道边（见 CUSTOM_BORDER_WIDTH）。放在 clip 之后，
+            // 描边超出色块的那一半会被裁掉，看起来就是内描边。
+            .then(
+                if (course.isCustom) {
+                    Modifier.border(CUSTOM_BORDER_WIDTH, OnCourseColor.copy(alpha = CUSTOM_BORDER_ALPHA), shape)
+                } else {
+                    Modifier
+                }
+            )
             // 点格子看详情。`clickable` 放在 background 之后，水波纹才会画在色块上面
             .clickable(onClick = onClick)
             .padding(horizontal = 3.dp, vertical = 2.dp),

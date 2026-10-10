@@ -4,9 +4,11 @@ import android.content.Context
 import com.ntu.schedule.core.AuthResult
 import com.ntu.schedule.core.CasAuthenticator
 import com.ntu.schedule.core.CookieJar
+import com.ntu.schedule.core.Course
 import com.ntu.schedule.core.HttpClient
 import com.ntu.schedule.core.Schedule
 import com.ntu.schedule.core.ScheduleApi
+import com.ntu.schedule.core.SeasonMode
 import com.ntu.schedule.core.TermPicker
 import com.ntu.schedule.notify.ReminderScheduler
 import kotlinx.coroutines.Dispatchers
@@ -24,6 +26,7 @@ import kotlinx.coroutines.withContext
 class ScheduleRepository(private val context: Context) {
 
     private val store = ScheduleStore(context)
+    private val seasonStore = SeasonStore(context)
 
     sealed class Outcome {
         data class Success(val schedule: Schedule, val courseCount: Int) : Outcome()
@@ -36,6 +39,20 @@ class ScheduleRepository(private val context: Context) {
     fun loadLocal(): Schedule? = store.loadSchedule()
 
     fun savedStudentId(): String = store.loadStudentId()
+
+    // ------------------------------------------------------- 用户自己加的课
+
+    /** 只读自定义课（不含教务导入的那些）。界面编辑时用，读的是「原始」列表。 */
+    fun customCourses(): List<Course> = store.loadCustomCourses()
+
+    /** 整表写回自定义课。写完之后由调用方负责刷新界面/提醒/小组件。 */
+    fun saveCustomCourses(courses: List<Course>) = store.saveCustomCourses(courses)
+
+    // ------------------------------------------------------------ 作息档位
+
+    fun loadSeasonMode(): SeasonMode = seasonStore.load()
+
+    fun saveSeasonMode(mode: SeasonMode) = seasonStore.save(mode)
 
     // ------------------------------------------------------- 记住的账号密码
 

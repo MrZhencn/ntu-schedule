@@ -203,22 +203,7 @@ object ScheduleParser {
 
     /** 把 [Schedule] 转成可持久化的 JSON。字段名与数据类一一对应，便于日后兼容旧缓存。 */
     fun toJson(schedule: Schedule): String {
-        val courses = JsonValue.arr(schedule.courses.map { c ->
-            JsonValue.obj(
-                "name" to JsonValue.of(c.name),
-                "teacher" to JsonValue.of(c.teacher),
-                "room" to JsonValue.of(c.room),
-                "dayOfWeek" to JsonValue.of(c.dayOfWeek),
-                "startPeriod" to JsonValue.of(c.startPeriod),
-                "endPeriod" to JsonValue.of(c.endPeriod),
-                "weeks" to JsonValue.arr(c.weeks.map { JsonValue.of(it) }),
-                "weekType" to JsonValue.of(c.weekType.name),
-                "teachingClass" to JsonValue.of(c.teachingClass),
-                "courseCode" to JsonValue.of(c.courseCode),
-                "campus" to JsonValue.of(c.campus),
-                "weekMarker" to JsonValue.of(c.weekMarker),
-            )
-        })
+        val courses = JsonValue.arr(schedule.courses.map { courseToJson(it) })
         val weeks = JsonValue.arr(schedule.weeks.map { w ->
             JsonValue.obj(
                 "week" to JsonValue.of(w.week),
@@ -242,6 +227,79 @@ object ScheduleParser {
         ).toJsonString()
     }
 
+    /**
+     * 单条课程 → JSON。
+     *
+     * 抽成公开函数是因为用户自己加的课要**存进另一个文件**（`custom_courses.json`），
+     * 那里的格式必须和课表文件里的课程完全一致 —— 各写一份字段列表，
+     * 早晚会漏掉新加的字段（比如 [Course.customId] 本身就是这么来的）。
+     */
+    fun courseToJson(c: Course): JsonValue = JsonValue.obj(
+        "name" to JsonValue.of(c.name),
+        "teacher" to JsonValue.of(c.teacher),
+        "room" to JsonValue.of(c.room),
+        "dayOfWeek" to JsonValue.of(c.dayOfWeek),
+        "startPeriod" to JsonValue.of(c.startPeriod),
+        "endPeriod" to JsonValue.of(c.endPeriod),
+        "weeks" to JsonValue.arr(c.weeks.map { JsonValue.of(it) }),
+        "weekType" to JsonValue.of(c.weekType.name),
+        "teachingClass" to JsonValue.of(c.teachingClass),
+        "courseCode" to JsonValue.of(c.courseCode),
+        "campus" to JsonValue.of(c.campus),
+        "weekMarker" to JsonValue.of(c.weekMarker),
+        "customId" to JsonValue.of(c.customId),
+    )
+
+    /**
+     * [courseToJson] 的逆操作。课名为空、星期/节次不合法时返回 null（丢弃这一条，
+     * 而不是让整个文件解析失败 —— 一条坏数据不该把整张课表废掉）。
+     */
+    fun courseFromJson(node: JsonValue): Course? {
+        val name = node.strOf("name")
+        if (name.isEmpty()) return null
+        val day = node.intOf("dayOfWeek", default = 0)
+        val start = node.intOf("startPeriod", default = 0)
+        if (day !in 1..7 || start <= 0) return null
+        return Course(
+            name = name,
+            teacher = node.strOf("teacher"),
+            room = node.strOf("room"),
+            dayOfWeek = day,
+            startPeriod = start,
+            endPeriod = node.intOf("endPeriod", default = start),
+            weeks = node["weeks"]?.asArray.orEmpty().mapNotNull { it.asInt },
+            weekType = runCatching { WeekType.valueOf(node.strOf("weekType")) }
+                .getOrDefault(WeekType.ALL),
+            teachingClass = node.strOf("teachingClass"),
+            courseCode = node.strOf("courseCode"),
+            campus = node.strOf("campus"),
+            weekMarker = node.strOf("weekMarker"),
+            customId = node.strOf("customId"),
+        )
+    }
+
+    // ------------------------------------------------------ 用户自己加的课
+
+    /**
+     * 自定义课列表 → JSON。
+     *
+     * 独立文件（不是塞进 `schedule.json`）的原因：**重新导入课表会把那个文件整个重写**，
+     * 用户的加课就会跟着一起没。分开存之后，重新导入只换教务那部分。
+     */
+    fun customCoursesToJson(courses: List<Course>): String = JsonValue.obj(
+        "version" to JsonValue.of(SCHEMA_VERSION),
+        "courses" to JsonValue.arr(courses.map { courseToJson(it) }),
+    ).toJsonString()
+
+    /** [customCoursesToJson] 的逆操作。没有 `customId` 的条目一律丢弃。 */
+    fun customCoursesFromJson(text: String?): List<Course> {
+        val root = JsonValue.parse(text)
+        if (root is JsonValue.Null) return emptyList()
+        return root["courses"]?.asArray.orEmpty()
+            .mapNotNull { courseFromJson(it) }
+            .filter { it.isCustom }
+    }
+
     const val SCHEMA_VERSION = 1
 
     /** [toJson] 的逆操作。任何异常都返回 null，由调用方决定提示文案。 */
@@ -250,28 +308,7 @@ object ScheduleParser {
         if (root is JsonValue.Null) return null
         if (root["courses"] == null && root["totalWeeks"] == null) return null
 
-        val courses = root["courses"]?.asArray.orEmpty().mapNotNull { node ->
-            val name = node.strOf("name")
-            if (name.isEmpty()) return@mapNotNull null
-            val day = node.intOf("dayOfWeek", default = 0)
-            val start = node.intOf("startPeriod", default = 0)
-            if (day !in 1..7 || start <= 0) return@mapNotNull null
-            Course(
-                name = name,
-                teacher = node.strOf("teacher"),
-                room = node.strOf("room"),
-                dayOfWeek = day,
-                startPeriod = start,
-                endPeriod = node.intOf("endPeriod", default = start),
-                weeks = node["weeks"]?.asArray.orEmpty().mapNotNull { it.asInt },
-                weekType = runCatching { WeekType.valueOf(node.strOf("weekType")) }
-                    .getOrDefault(WeekType.ALL),
-                teachingClass = node.strOf("teachingClass"),
-                courseCode = node.strOf("courseCode"),
-                campus = node.strOf("campus"),
-                weekMarker = node.strOf("weekMarker"),
-            )
-        }
+        val courses = root["courses"]?.asArray.orEmpty().mapNotNull { courseFromJson(it) }
         val weeks = root["weeks"]?.asArray.orEmpty().mapNotNull { node ->
             val w = node.intOf("week", default = 0)
             val iso = node.strOf("mondayIso")
